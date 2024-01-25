@@ -2,7 +2,7 @@ import requests
 import warnings
 import re
 
-from decommission.modules.local_exceptions import *
+from local_exceptions import *
 import xml.etree.ElementTree as ET
 from tqdm import tqdm
 from colorama import Fore
