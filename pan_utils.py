@@ -1454,7 +1454,7 @@ if __name__ == "__main__":
     #pano = PanOSAPI("10.10.200.220")
     pano.Username = input("Username: ")
     pano.Password = getpass()
-    decomm_server = "123.123.123.121"
+    #decomm_server = "123.123.123.121"
 
     print("logging in")
     pano.login()
