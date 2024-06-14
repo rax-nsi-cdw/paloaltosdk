@@ -25,7 +25,7 @@ class PanRequests:
     def __init__(self, logging_format='%(message)s'):
         self.Username = ''
         self.Password = ''
-        self.IP = "10.10.1.50"
+        self.IP = ""
         self.APIPort = 443
         self.pan_rest_version = ""
         self.headers = {"Content-Type": "application/json"}
