@@ -6,7 +6,7 @@ from urllib.parse import quote
 import time
 import xml.etree.ElementTree as ET
 
-from decommission.modules.local_exceptions import *
+from local_exceptions import *
 from tqdm import tqdm
 from colorama import Fore
 
