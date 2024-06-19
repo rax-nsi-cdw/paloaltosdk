@@ -6,9 +6,9 @@ from urllib.parse import quote
 import time
 import xml.etree.ElementTree as ET
 
-from local_exceptions import *
+from paloaltosdk.local_exceptions import *
 from tqdm import tqdm
-from colorama import Fore
+
 
 
         
