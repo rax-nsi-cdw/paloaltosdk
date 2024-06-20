@@ -5,6 +5,8 @@ import logging
 from urllib.parse import quote
 import time
 import xml.etree.ElementTree as ET
+import xmltodict
+import json
 
 from paloaltosdk.local_exceptions import *
 from tqdm import tqdm
@@ -118,6 +120,12 @@ class _PanPaloShared(PanRequests):
                     
                     break
                 time.sleep(1) 
+    
+    @staticmethod
+    def xml_to_json(resp):
+        xml_content = resp.content
+        dict_content = xmltodict.parse(xml_content)
+        return dict_content
 
     def commit(self, watch=False, force=False):
         '''
@@ -272,12 +280,70 @@ class PanoramaAPI(_PanPaloShared):
 
 
     def get_api_version(self):
+
         uri = f"?type=version&key={self.headers['X-PAN-Key']}"
 
         resp = self._get_req(self.xml_uri+uri)
+
         responseXml = ET.fromstring(resp.content)
         return responseXml.find('result').find('sw-version').text
         #return {"status": responseXml.find('result').find('job').find('status').text, 
+    
+    def get_devices(self):
+        
+        uri = f'?type=op&cmd=<show><devices><all></all></devices></show>'
+        
+        resp = self._get_req(self.xml_uri+uri)
+        return self.xml_to_json(resp)['response']['result']['devices']['entry']
+    
+    def get_sys_info(self, sn):
+        uri = f'?type=op&cmd=<show><system><info></info></system></show>&target={sn}'
+        resp = self._get_req(self.xml_uri+uri)
+        return self.xml_to_json(resp)['response']
+    
+    def get_sys_limits(self, sn, filter='cfg.general.max*'):
+
+        uri = f'?type=op&cmd=<show><system><state><filter>{filter}</filter></state></system></show>&target={sn}'
+        resp = self._get_req(self.xml_uri+uri)
+        return self.xml_to_json(resp)['response']['result']
+    
+    def get_vsys_max(self, sn):
+
+        sys_limit_resp = self.get_sys_limits(sn, filter='cfg.general.max-vsys*')
+
+        max_vsys_in_hex = re.search('max-vsys:\s+(0x.*)', sys_limit_resp)
+        if max_vsys_in_hex:
+            return int(max_vsys_in_hex.group(1), 16)
+        
+        max_vsys = re.search('max-vsys:\s+(\d+)', sys_limit_resp)
+
+        if max_vsys:
+            return int(max_vsys.group(1))
+
+        return None
+    
+    def get_current_used_vsys(self, sn):
+
+        devices = self.get_devices()
+        for device in devices:
+            if device['serial'] == sn:
+                if 'vsys' in device and 'entry' in device['vsys']:
+                    return len(device['vsys']['entry'])
+        return None
+    
+    def get_available_vsys(self, sn):
+        """
+        returns the number (int) of vsys unused
+        """
+        try:
+            return self.get_vsys_max(sn) - self.get_current_used_vsys(sn)
+        except:
+            return None
+        
+
+
+        
+        
 
     def get_devicegroups(self, include_shared=False):
 
