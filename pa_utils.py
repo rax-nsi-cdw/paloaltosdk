@@ -98,6 +98,10 @@ class DeletionResponse:
 
 class _PanPaloShared(PanRequests):
 
+    def __init__(self):
+        super().__init__()
+        self.rest_uri = ""
+        self.xml_uri = "/api/"
 
     @staticmethod
     def watch(jobId, pb_description="Progress"):
@@ -178,6 +182,12 @@ class _PanPaloShared(PanRequests):
             responseXml = ET.fromstring(resp.content)
             key = responseXml.find('result').find('key')
             self.headers['X-PAN-Key'] = key.text
+            try:
+                self.sw_version = self.get_api_version()
+                self.api_version = re.search('\d+\.\d+',self.sw_version).group(0)
+                self.rest_uri = f"/restapi/v{self.api_version}/"
+            except:
+                self.sw_version = None
         except Exception:
 
             if 'invalid credential' in resp.content.decode('utf-8').lower():
@@ -210,13 +220,14 @@ class _PanPaloShared(PanRequests):
 
 class PanoramaAPI(_PanPaloShared):
 
-    rest_uri = "/restapi/v10.1/"
-    xml_uri = "/api/"
+    # rest_uri = f"/restapi/{self.sw_version}"
+    # xml_uri = "/api/"
 
 
-    def __init__(self, panorama_mgmt_ip):
+    def __init__(self, panorama_mgmt_ip=None):
         super().__init__()
-        self.IP = panorama_mgmt_ip
+        if panorama_mgmt_ip:
+            self.IP = panorama_mgmt_ip
         self.LoggedIn = False
 
     @staticmethod
@@ -259,7 +270,15 @@ class PanoramaAPI(_PanPaloShared):
 
         return references
 
-    
+
+    def get_api_version(self):
+        uri = f"?type=version&key={self.headers['X-PAN-Key']}"
+
+        resp = self._get_req(self.xml_uri+uri)
+        responseXml = ET.fromstring(resp.content)
+        return responseXml.find('result').find('sw-version').text
+        #return {"status": responseXml.find('result').find('job').find('status').text, 
+
     def get_devicegroups(self, include_shared=False):
 
         uri = 'Panorama/DeviceGroups' 
