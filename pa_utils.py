@@ -359,14 +359,18 @@ class PanoramaAPI(_PanPaloShared):
         
         devices_vsys = []
         devices = self.get_devices()
+        
 
         for device in devices:
             if device['multi-vsys'] == "yes":
-                vsys_data = {'hostname': device['hostname'], 'sn': device['serial'], 'vsys_unused_remaining': self.get_remaining_vsys(device['serial'])}
+                vsys_free = self.get_remaining_vsys(device['serial'])
+                vsys_max = self.get_vsys_max(device['serial'])
+                vsys_data = {'hostname': device['hostname'], 'sn': device['serial'], 'vsys_free': vsys_free, 'vsys_max': vsys_max }
                 vsys_in_use = []
                 for vsys in device['vsys']['entry']:
                     vsys_in_use.append({'@name': vsys['@name'], "display-name": vsys['display-name']})
                 vsys_data['vsys_in_use'] = vsys_in_use
+                vsys_data['vsys_used'] = len(vsys_in_use)
                 devices_vsys.append(vsys_data)
 
         return devices_vsys
