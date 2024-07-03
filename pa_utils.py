@@ -373,6 +373,7 @@ class PanoramaAPI(_PanPaloShared):
                 vsys_data['vsys_used'] = len(vsys_in_use)
                 devices_vsys.append(vsys_data)
 
+
         if combine_ha:
             device_vsys_combined_ha = []
             device_peers_added_to_device_vsys_combined_ha = []
@@ -385,7 +386,6 @@ class PanoramaAPI(_PanPaloShared):
                     device_vsys_combined_ha.append(device)
                     continue
               
-
                 if device['serial'] not in device_peers_added_to_device_vsys_combined_ha:
                     # storing peer data in memory in next lines to use later
                     ha_peer_data = None
@@ -432,8 +432,9 @@ class PanoramaAPI(_PanPaloShared):
                         ha_combined_vsys_data['vsys_free'] = "PEERS_NOT_SYNCED"
                         ha_combined_vsys_data['vsys_in_use'] = "PEERS_NOT_SYNCED"
 
-                device_peers_added_to_device_vsys_combined_ha.append(ha_peer_data['serial'])
-                device_vsys_combined_ha.append(ha_combined_vsys_data)
+
+                    device_peers_added_to_device_vsys_combined_ha.append(ha_peer_data['serial'])
+                    device_vsys_combined_ha.append(ha_combined_vsys_data)
 
             return device_vsys_combined_ha
         
