@@ -1068,8 +1068,50 @@ class PanoramaAPI(_PanPaloShared):
         
         return DeletionResponse(requests_resp=None, referenced_groups_deleted=referenced_groups_deleted, referenced_rules_deleted=referenced_rules_deleted)
         
-    
-    def create_vsys(self, vsys_name, vsys_id, serial, vsys_display_name=None, vsys_description=None):
+    @staticmethod
+    def find_lowest_available_number(numbers):
+
+        ''' used in create_vsys method '''
+        # Convert the strings to integers
+        numbers = [int(num) for num in numbers]
+
+        for i in range(1, 100):
+            if i not in numbers:
+                return i
+
+    def auto_vsysid(self, serial):
+        ''' automatically finds the next lowest vsys id available to use,
+            this is used with create_vsys method
+            '''
+
+        vsys_ids_used = []
+
+        for device in self.get_devices():
+            if device['serial'] == serial:
+                if 'vsys' in device:
+                    for dev_vsys in device['vsys']['entry']:
+                        dev_vsys_id = dev_vsys['@name'][-1]
+                        vsys_ids_used.append(dev_vsys_id)
+
+        return PanoramaAPI.find_lowest_available_number(vsys_ids_used)
+
+            
+    def create_vsys(self, vsys_name, vsys_id, serial):
+
+
+        '''
+        set vsys_id to 'auto' to automatically find the next available vsys id
+        
+        '''
+
+        
+
+        if vsys_id.lower() == 'auto':
+            # find next available vsys id automatically
+            vsys_id = self.auto_vsysid(serial)
+                        
+
+        ## WRITE LOGIC TO FIND OUT IF DEVICE IS ACTIVE OR PASSIVE
 
         payload = f'''
                     <entry name="vsys{vsys_id}">
