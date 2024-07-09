@@ -127,7 +127,7 @@ class _PanPaloShared(PanRequests):
         dict_content = xmltodict.parse(xml_content)
         return dict_content
 
-    def commit(self, watch=False, force=False):
+    def commit(self, watch=False, force=False, target=None):
         '''
         returns job ID 
 
@@ -135,7 +135,8 @@ class _PanPaloShared(PanRequests):
         '''
         uri = f"?key={self.headers['X-PAN-Key']}&type=commit&cmd=<commit></commit>" if not force else f"?key={self.headers['X-PAN-Key']}&type=commit&cmd=<commit><force></force></commit>"
 
-        
+        if target:
+            uri += f'&target={target}'
         print("\nCommitting changes..")
         resp = self._get_req(self.xml_uri+uri)
         responseXml = ET.fromstring(resp.content)
@@ -1067,7 +1068,19 @@ class PanoramaAPI(_PanPaloShared):
         
         return DeletionResponse(requests_resp=None, referenced_groups_deleted=referenced_groups_deleted, referenced_rules_deleted=referenced_rules_deleted)
         
-            
+    
+    def create_vsys(self, vsys_name, vsys_id, serial, vsys_display_name=None, vsys_description=None):
+
+        payload = f'''
+                    <entry name="vsys{vsys_id}">
+                        <display-name>{vsys_name}</display-name>
+                    </entry>
+                        '''
+
+        uri = f'?type=config&target={serial}&action=set&xpath=/config/devices/entry/vsys&element={payload}'
+        
+        resp = self._get_req(self.xml_uri+uri)
+        return self.xml_to_json(resp)['response']
     
     def decommission_server(self, servers_to_decommission):
 
