@@ -1096,20 +1096,37 @@ class PanoramaAPI(_PanPaloShared):
         return PanoramaAPI.find_lowest_available_number(vsys_ids_used)
 
             
-    def create_vsys(self, vsys_name, vsys_id, serial):
+    def create_vsys(self, vsys_name, vsys_id, serial, make_changes_on_active_ha_peer=False):
 
 
         '''
         set vsys_id to 'auto' to automatically find the next available vsys id
+
+        make_changes_on_active_ha_peer; will verify sn is an active peer if HA, else will create vsys on active peer
         
         '''
 
         
 
-        if vsys_id.lower() == 'auto':
+        if str(vsys_id).lower() == 'auto':
             # find next available vsys id automatically
             vsys_id = self.auto_vsysid(serial)
-                        
+        # FIXME: FINISH BELOW FOR CONFIGURING PEER
+        # if make_changes_on_active_ha_peer:                
+        #     devices = self.get_devices()
+        #     found_active_peer = False
+        #     peer_index = -1
+
+        #     while not found_active_peer and peer_index < 2:
+        #         peer_index += 1
+
+        #         for device in devices:
+                
+        #             if device['@name'] == sn.split('_')[peer_index]:
+        #                 if 'ha' in device:
+        #                     if device['ha']['state'] == 'active':
+        #                         found_active_peer = True
+        #                         serial = device['@name']
 
         ## WRITE LOGIC TO FIND OUT IF DEVICE IS ACTIVE OR PASSIVE
 
@@ -1123,6 +1140,21 @@ class PanoramaAPI(_PanPaloShared):
         
         resp = self._get_req(self.xml_uri+uri)
         return self.xml_to_json(resp)['response']
+    
+    def delete_vsys(self, vsys_name, vsys_id, serial):
+
+
+        '''
+        set vsys_id to 'auto' to automatically find the next available vsys id
+        
+        '''                      
+
+
+        uri = f"?type=config&target={serial}&action=delete&xpath=/config/devices/entry/vsys/entry[@name='vsys{vsys_id}']"
+        
+        resp = self._post_req(self.xml_uri+uri)
+        return self.xml_to_json(resp)['response']
+    
     
     def decommission_server(self, servers_to_decommission):
 
