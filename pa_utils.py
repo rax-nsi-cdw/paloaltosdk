@@ -348,7 +348,7 @@ class PanoramaAPI(_PanPaloShared):
             except:
                 return None
     
-    def get_vsys_data(self, device_list=None):
+    def get_vsys_data(self, combine_ha= True, device_list=None):
         """
         returns the number (int) of vsys unused
 
