@@ -297,20 +297,20 @@ class PanoramaAPI(_PanPaloShared):
         resp = self._get_req(self.xml_uri+uri)
         return self.xml_to_json(resp)['response']['result']['devices']['entry']
     
-    def get_sys_info(self, serial):
-        uri = f'?type=op&cmd=<show><system><info></info></system></show>&target={serial}'
+    def get_sys_info(self, sn):
+        uri = f'?type=op&cmd=<show><system><info></info></system></show>&target={sn}'
         resp = self._get_req(self.xml_uri+uri)
         return self.xml_to_json(resp)['response']
     
-    def get_sys_limits(self, serial, filter='cfg.general.max*'):
+    def get_sys_limits(self, sn, filter='cfg.general.max*'):
 
-        uri = f'?type=op&cmd=<show><system><state><filter>{filter}</filter></state></system></show>&target={serial}'
+        uri = f'?type=op&cmd=<show><system><state><filter>{filter}</filter></state></system></show>&target={sn}'
         resp = self._get_req(self.xml_uri+uri)
         return self.xml_to_json(resp)['response']['result']
     
-    def get_vsys_max(self, serial):
+    def get_vsys_max(self, sn):
 
-        sys_limit_resp = self.get_sys_limits(serial, filter='cfg.general.max-vsys*')
+        sys_limit_resp = self.get_sys_limits(sn, filter='cfg.general.max-vsys*')
 
         max_vsys_in_hex = re.search('max-vsys:\s+(0x.*)', sys_limit_resp)
         if max_vsys_in_hex:
@@ -323,44 +323,46 @@ class PanoramaAPI(_PanPaloShared):
 
         return None
     
-    def get_current_used_vsys(self, serial):
+    def get_current_used_vsys(self, sn):
 
         devices = self.get_devices()
         for device in devices:
-            if device['serial'] == serial:
+            if device['serial'] == sn:
                 if 'vsys' in device and 'entry' in device['vsys']:
                     return len(device['vsys']['entry'])
         return None
     
-    def get_remaining_vsys(self, serial=None):
+    def get_remaining_vsys(self, sn=None):
         """
         returns the number (int) of vsys unused
 
-        if no serial specified, method will pull all devices. 
+        if no sn specified, method will pull all devices. 
 
 
         Firewall must be in multi vsys mode to have return data
         """
 
-        if serial:
+        if sn:
             try:
-                return self.get_vsys_max(serial) - self.get_current_used_vsys(serial)
+                return self.get_vsys_max(sn) - self.get_current_used_vsys(sn)
             except:
                 return None
     
-    def get_vsys_data(self, combine_ha=True):
+    def get_vsys_data(self, device_list=None):
         """
         returns the number (int) of vsys unused
 
-        if no serial specified, method will pull all devices. 
+        if no sn specified, method will pull all devices. 
 
 
         Firewall must be in multi vsys mode to have return data
         """
         
         devices_vsys = []
-        devices = self.get_devices()
-        
+        if not device_list:
+            devices = self.get_devices()
+        else:
+            devices = device_list
 
         for device in devices:
             if device['multi-vsys'] == "yes":
@@ -442,12 +444,6 @@ class PanoramaAPI(_PanPaloShared):
         return devices_vsys
 
 
-
-        
-
-
-        
-        
 
     def get_devicegroups(self, include_shared=False):
 
@@ -1273,6 +1269,7 @@ class PanOSAPI(_PanPaloShared):
             return [] # empty
         return resp
 
+
     def create_address(self, name, ip_netmask, description="", location="vsys"):
         if location == "vsys":
             uri = f'Objects/Addresses?location={location}&{location}={self.vsys}&name={name}'
@@ -1290,6 +1287,26 @@ class PanOSAPI(_PanPaloShared):
         resp = self._post_req(self.rest_uri+uri,payload)
 
         return resp.json()
+
+
+    def create_tag(self, name, comments="", location="vsys"):
+        if location == "vsys":
+            uri = f'Objects/tags?location={location}&{location}={self.vsys}&name={name}'
+        else:
+            uri = f'Objects/tags?location={location}&name={name}'
+
+        payload = {
+            "entry": {
+                "@name": name,
+                "description": comments
+            }
+        } 
+
+        resp = self._post_req(self.rest_uri+uri,payload)
+
+        return resp.json()
+    
+
 
     def get_addressgroup(self, address_group, location="vsys"): 
 
