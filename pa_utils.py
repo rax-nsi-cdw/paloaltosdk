@@ -1092,7 +1092,7 @@ class PanoramaAPI(_PanPaloShared):
         return PanoramaAPI.find_lowest_available_number(vsys_ids_used)
 
             
-    def create_vsys(self, vsys_name, vsys_id, serial, make_changes_on_active_ha_peer=False):
+    def create_vsys(self, vsys_name:str, vsys_id:str, serial:int, tag_name:str, make_changes_on_active_ha_peer:bool=False):
 
 
         '''
@@ -1125,17 +1125,28 @@ class PanoramaAPI(_PanPaloShared):
         #                         serial = device['@name']
 
         ## WRITE LOGIC TO FIND OUT IF DEVICE IS ACTIVE OR PASSIVE
+   
 
-        payload = f'''
-                    <entry name="vsys{vsys_id}">
-                        <display-name>{vsys_name}</display-name>
-                        <tag>
-                            <entry name="RESERVED">
-                                <color>color15</color>
-                                <comments>"other date created"</comments>  
-                            </entry>
-                        </tag>
-                    </entry>
+        ''' Payload could also containt colors and comments:
+                                    <tag>
+                                        <color>color15</color>
+                                        <comments>"other date created"</comments>  
+                                    </tag>
+        '''
+        if tag_name:
+            payload = f'''
+                        <entry name="vsys{vsys_id}">
+                            <display-name>{vsys_name}</display-name>
+                            <tag>
+                                <entry name="{tag_name}">
+                            </tag>
+                        </entry>
+                        '''
+        else:
+            payload = f'''
+                        <entry name="vsys{vsys_id}">
+                            <display-name>{vsys_name}</display-name>
+                        </entry>
                         '''
         # FIXME: add date created
 
