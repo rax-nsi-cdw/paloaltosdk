@@ -1129,13 +1129,21 @@ class PanoramaAPI(_PanPaloShared):
         payload = f'''
                     <entry name="vsys{vsys_id}">
                         <display-name>{vsys_name}</display-name>
+                        <tag>
+                            <entry name="RESERVED">
+                                <color>color15</color>
+                                <comments>"other date created"</comments>  
+                            </entry>
+                        </tag>
                     </entry>
                         '''
+        # FIXME: add date created
 
         uri = f'?type=config&target={serial}&action=set&xpath=/config/devices/entry/vsys&element={payload}'
         
         resp = self._get_req(self.xml_uri+uri)
         return self.xml_to_json(resp)['response']
+    
     
     def delete_vsys(self, vsys_name, vsys_id, serial):
 
@@ -1152,6 +1160,16 @@ class PanoramaAPI(_PanPaloShared):
         return self.xml_to_json(resp)['response']
     
     
+    def config_xml_generic(self, xpath, serial=None, action="get"):
+        if serial != None:
+            uri = f"?type=config&target={serial}&action=get&xpath={xpath}"
+        else:
+            uri = f"?type=config&action={action}&xpath={xpath}"
+        print(uri)
+        resp = self._get_req(self.xml_uri+uri)
+        return self.xml_to_json(resp)['response']
+    
+
     def decommission_server(self, servers_to_decommission):
 
         address_objects_to_delete = []
@@ -1287,25 +1305,6 @@ class PanOSAPI(_PanPaloShared):
         resp = self._post_req(self.rest_uri+uri,payload)
 
         return resp.json()
-
-
-    def create_tag(self, name, comments="", location="vsys"):
-        if location == "vsys":
-            uri = f'Objects/tags?location={location}&{location}={self.vsys}&name={name}'
-        else:
-            uri = f'Objects/tags?location={location}&name={name}'
-
-        payload = {
-            "entry": {
-                "@name": name,
-                "description": comments
-            }
-        } 
-
-        resp = self._post_req(self.rest_uri+uri,payload)
-
-        return resp.json()
-    
 
 
     def get_addressgroup(self, address_group, location="vsys"): 
