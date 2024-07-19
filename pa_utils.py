@@ -195,8 +195,9 @@ class _PanPaloShared(PanRequests):
                 self.sw_version = self.get_api_version()
                 self.api_version = re.search('\d+\.\d+',self.sw_version).group(0)
                 self.rest_uri = f"/restapi/v{self.api_version}/"
-            except:
+            except Exception as e:
                 self.sw_version = None
+                raise e
         except Exception:
 
             if 'invalid credential' in resp.content.decode('utf-8').lower():
@@ -1092,7 +1093,7 @@ class PanoramaAPI(_PanPaloShared):
         return PanoramaAPI.find_lowest_available_number(vsys_ids_used)
 
             
-    def create_vsys(self, vsys_name:str, vsys_id:str, serial:int, tag_name:str, make_changes_on_active_ha_peer:bool=False):
+    def create_vsys(self, vsys_name:str, vsys_id:str, serial:int, tag_name:str=None, make_changes_on_active_ha_peer:bool=False):
 
 
         '''
@@ -1138,7 +1139,7 @@ class PanoramaAPI(_PanPaloShared):
                         <entry name="vsys{vsys_id}">
                             <display-name>{vsys_name}</display-name>
                             <tag>
-                                <entry name="{tag_name}">
+                                <entry name="{tag_name}"></entry>
                             </tag>
                         </entry>
                         '''
@@ -1271,6 +1272,14 @@ class PanOSAPI(_PanPaloShared):
 
         return references
     
+
+    def get_api_version(self):
+        uri = f"?type=version&key={self.headers['X-PAN-Key']}"
+        resp = self._get_req(self.xml_uri+uri)
+        responseXml = ET.fromstring(resp.content)
+        return responseXml.find('result').find('sw-version').text
+        #return {"status": responseXml.find('result').find('job').find('status').text, 
+    
     def get_sec_rules(self, location="vsys"):
 
         if location == "vsys":
@@ -1292,6 +1301,16 @@ class PanOSAPI(_PanPaloShared):
 
         resp = self._get_req(self.rest_uri+uri)
 
+        if resp.ok and 'entry' in resp.json()['result']:
+            return resp.json()['result']['entry']
+        elif resp.ok and "@total-count" in resp.json()['result'] and resp.json()['result']['@total-count'] == "0":
+            return [] # empty
+        return resp
+
+
+    def get_tags(self, location:str=None):
+        uri = f'objects/tags'
+        resp = self._get_req(self.rest_uri+uri)
         if resp.ok and 'entry' in resp.json()['result']:
             return resp.json()['result']['entry']
         elif resp.ok and "@total-count" in resp.json()['result'] and resp.json()['result']['@total-count'] == "0":
