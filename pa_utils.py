@@ -324,9 +324,9 @@ class PanoramaAPI(_PanPaloShared):
 
         return None
     
-    def get_current_used_vsys(self, sn):
-
-        devices = self.get_devices()
+    def get_current_used_vsys(self, sn, devices=None):
+        if devices == None:
+            devices = self.get_devices()
         for device in devices:
             if device['serial'] == sn:
                 if 'vsys' in device and 'entry' in device['vsys']:
@@ -349,7 +349,7 @@ class PanoramaAPI(_PanPaloShared):
             except:
                 return None
     
-    def get_vsys_data(self, combine_ha= True, device_list=None):
+    def get_vsys_data(self, combine_ha= True, devices=None):
         """
         returns the number (int) of vsys unused
 
@@ -358,12 +358,10 @@ class PanoramaAPI(_PanPaloShared):
 
         Firewall must be in multi vsys mode to have return data
         """
-        
+        print(device)
         devices_vsys = []
-        if not device_list:
+        if devices == None:
             devices = self.get_devices()
-        else:
-            devices = device_list
 
         for device in devices:
             if device['multi-vsys'] == "yes":
@@ -1076,14 +1074,15 @@ class PanoramaAPI(_PanPaloShared):
             if i not in numbers:
                 return i
 
-    def auto_vsysid(self, serial):
+    def auto_vsysid(self, serial, devices=None):
         ''' automatically finds the next lowest vsys id available to use,
             this is used with create_vsys method
             '''
-
+        if devices == None:
+            devices = self.get_devices()
         vsys_ids_used = []
 
-        for device in self.get_devices():
+        for device in devices:
             if device['serial'] == serial:
                 if 'vsys' in device:
                     for dev_vsys in device['vsys']['entry']:
