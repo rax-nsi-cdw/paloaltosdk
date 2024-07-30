@@ -1204,16 +1204,19 @@ class PanoramaAPI(_PanPaloShared):
         return self.xml_to_json(resp)['response']
     
     
-    def delete_vsys(self, vsys_name, vsys_id, serial):
+    def delete_vsys(self, serial:int, vsys_name:str=None, vsys_id:int=None, ):
 
 
         '''
-        set vsys_id to 'auto' to automatically find the next available vsys id
+        Deletes vysys. Requires serial and either vsys_name or vsys_id to be passed. If both are passed, vsys_id will be used.
         
         '''                      
-
-
-        uri = f"?type=config&target={serial}&action=delete&xpath=/config/devices/entry/vsys/entry[@name='vsys{vsys_id}']"
+        if vsys_id:
+            uri = f"?type=config&target={serial}&action=delete&xpath=/config/devices/entry/vsys/entry[@name='vsys{vsys_id}']"
+        elif vsys_name:
+            uri = f"?type=config&target={serial}&action=delete&xpath=/config/devices/entry/vsys/entry[@name='{vsys_name}']"
+        else:
+            raise ValueError("Must pass either vsys_name or vsys_id to delete vsys")
         
         resp = self._post_req(self.xml_uri+uri)
         return self.xml_to_json(resp)['response']
