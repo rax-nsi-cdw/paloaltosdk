@@ -7,6 +7,7 @@ import time
 import xml.etree.ElementTree as ET
 import xmltodict
 import json
+import datetime
 
 from paloaltosdk.local_exceptions import *
 from tqdm import tqdm
@@ -35,6 +36,7 @@ class PanRequests:
         logging.basicConfig(level=logging.CRITICAL, format=self.logging_format)
         self.logger = logging.getLogger(self.__class__.__name__)
         self.logger.setLevel(logging.CRITICAL)
+        self.today = datetime.datetime.now().strftime("%Y-%m-%d")
 
     @property
     def logging_format(self):
@@ -195,8 +197,9 @@ class _PanPaloShared(PanRequests):
                 self.sw_version = self.get_api_version()
                 self.api_version = re.search('\d+\.\d+',self.sw_version).group(0)
                 self.rest_uri = f"/restapi/v{self.api_version}/"
-            except:
+            except Exception as e:
                 self.sw_version = None
+                raise e
         except Exception:
 
             if 'invalid credential' in resp.content.decode('utf-8').lower():
@@ -289,6 +292,7 @@ class PanoramaAPI(_PanPaloShared):
         responseXml = ET.fromstring(resp.content)
         return responseXml.find('result').find('sw-version').text
         #return {"status": responseXml.find('result').find('job').find('status').text, 
+
     
     def get_devices(self):
         
@@ -297,20 +301,34 @@ class PanoramaAPI(_PanPaloShared):
         resp = self._get_req(self.xml_uri+uri)
         return self.xml_to_json(resp)['response']['result']['devices']['entry']
     
-    def get_sys_info(self, serial):
-        uri = f'?type=op&cmd=<show><system><info></info></system></show>&target={serial}'
+    
+    def get_sys_info(self, sn):
+        uri = f'?type=op&cmd=<show><system><info></info></system></show>&target={sn}'
         resp = self._get_req(self.xml_uri+uri)
         return self.xml_to_json(resp)['response']
     
-    def get_sys_limits(self, serial, filter='cfg.general.max*'):
 
-        uri = f'?type=op&cmd=<show><system><state><filter>{filter}</filter></state></system></show>&target={serial}'
+    def config_xml_generic(self, xpath, serial=None, action="get"):
+        '''Used to get configuration data'''
+        if serial != None:
+            uri = f"?type=config&target={serial}&action=get&xpath={xpath}"
+        else:
+            uri = f"?type=config&action={action}&xpath={xpath}"
+        # print(uri)
+        resp = self._get_req(self.xml_uri+uri)
+        return self.xml_to_json(resp)['response']
+    
+    
+    def get_sys_limits(self, sn, filter='cfg.general.max*'):
+
+        uri = f'?type=op&cmd=<show><system><state><filter>{filter}</filter></state></system></show>&target={sn}'
         resp = self._get_req(self.xml_uri+uri)
         return self.xml_to_json(resp)['response']['result']
     
-    def get_vsys_max(self, serial):
+    
+    def get_vsys_max(self, sn):
 
-        sys_limit_resp = self.get_sys_limits(serial, filter='cfg.general.max-vsys*')
+        sys_limit_resp = self.get_sys_limits(sn, filter='cfg.general.max-vsys*')
 
         max_vsys_in_hex = re.search('max-vsys:\s+(0x.*)', sys_limit_resp)
         if max_vsys_in_hex:
@@ -323,45 +341,54 @@ class PanoramaAPI(_PanPaloShared):
 
         return None
     
-    def get_current_used_vsys(self, serial):
-
-        devices = self.get_devices()
+    def get_current_used_vsys(self, sn, devices=None):
+        if devices == None:
+            devices = self.get_devices()
         for device in devices:
-            if device['serial'] == serial:
+            if device['serial'] == sn:
                 if 'vsys' in device and 'entry' in device['vsys']:
                     return len(device['vsys']['entry'])
         return None
     
-    def get_remaining_vsys(self, serial=None):
+    def get_remaining_vsys(self, sn=None):
         """
         returns the number (int) of vsys unused
 
-        if no serial specified, method will pull all devices. 
+        if no sn specified, method will pull all devices. 
 
 
         Firewall must be in multi vsys mode to have return data
         """
 
-        if serial:
+        if sn:
             try:
-                return self.get_vsys_max(serial) - self.get_current_used_vsys(serial)
+                return self.get_vsys_max(sn) - self.get_current_used_vsys(sn)
             except:
                 return None
     
-    def get_vsys_data(self, combine_ha=True):
-        """
-        returns the number (int) of vsys unused
 
-        if no serial specified, method will pull all devices. 
+    def get_vsys_tags(self, sn, vsys_name):
+        '''Returns tags for a vsys'''
+        xpath = f"/config/devices/entry/vsys/entry[@name='{vsys_name}']/tag"
+        resp = self.config_xml_generic(xpath=xpath, serial=sn, action='get')
+        if resp['result'] is not None and 'tag' in resp['result'] and 'entry' in resp['result']['tag']:
+            return resp['result']['tag']['entry']
+        else:
+            return None  # or any default value you prefer
+    
 
-
-        Firewall must be in multi vsys mode to have return data
-        """
-        
+    def get_all_vsys_tags(self, devices:list):
+        for device in devices:
+            if device['multi-vsys'] == "yes":
+                vsys_tags = []
+                for vsys in device['vsys']['entry']:
+                    tags = self.get_vsys_tags(device['serial'], vsys['@name'])
+                    vsys_tags.append({'vsys': vsys['@name'], 'tags': tags})
+                return vsys_tags
+    
+    def get_vsys_fields(self, devices:str) -> list:
+        ''' maps out vsys fields for each device'''
         devices_vsys = []
-        devices = self.get_devices()
-        
-
         for device in devices:
             if device['multi-vsys'] == "yes":
                 vsys_free = self.get_remaining_vsys(device['serial'])
@@ -369,11 +396,30 @@ class PanoramaAPI(_PanPaloShared):
                 vsys_data = {'hostname': device['hostname'], 'serial': device['serial'], 'vsys_free': vsys_free, 'vsys_max': vsys_max, "ha_peer": device['ha']['peer']['serial'] if 'ha' in device else None }
                 vsys_in_use = []
                 for vsys in device['vsys']['entry']:
-                    vsys_in_use.append({'@name': vsys['@name'], "display-name": vsys['display-name']})
+                    
+                    # Show devices doesn't have detailed vsys info (tags)
+                    tags = self.get_vsys_tags(device['serial'], vsys['@name'])
+                    vsys_in_use.append({'@name': vsys['@name'], "display-name": vsys['display-name'], "tags": tags})
                 vsys_data['vsys_in_use'] = vsys_in_use
                 vsys_data['vsys_used'] = len(vsys_in_use)
                 devices_vsys.append(vsys_data)
+        return devices_vsys
+    
+    
+    def get_vsys_data(self, combine_ha= True, devices=None):
+        """
+        returns number of used and available vsys. Includes tags
 
+        if no sn specified, method will pull all devices. 
+        
+        Firewall must be in multi vsys mode to have return data
+        
+        """
+        devices_vsys = []
+        if devices == None:
+            devices = self.get_devices()
+
+        devices_vsys = self.get_vsys_fields(devices)
 
         if combine_ha:
             device_vsys_combined_ha = []
@@ -442,12 +488,6 @@ class PanoramaAPI(_PanPaloShared):
         return devices_vsys
 
 
-
-        
-
-
-        
-        
 
     def get_devicegroups(self, include_shared=False):
 
@@ -1079,14 +1119,15 @@ class PanoramaAPI(_PanPaloShared):
             if i not in numbers:
                 return i
 
-    def auto_vsysid(self, serial):
+    def auto_vsysid(self, serial, devices=None):
         ''' automatically finds the next lowest vsys id available to use,
             this is used with create_vsys method
             '''
-
+        if devices == None:
+            devices = self.get_devices()
         vsys_ids_used = []
 
-        for device in self.get_devices():
+        for device in devices:
             if device['serial'] == serial:
                 if 'vsys' in device:
                     for dev_vsys in device['vsys']['entry']:
@@ -1096,7 +1137,7 @@ class PanoramaAPI(_PanPaloShared):
         return PanoramaAPI.find_lowest_available_number(vsys_ids_used)
 
             
-    def create_vsys(self, vsys_name, vsys_id, serial, make_changes_on_active_ha_peer=False):
+    def create_vsys(self, vsys_name:str, vsys_id:str, serial:int, tag_name:str=None, make_changes_on_active_ha_peer:bool=False):
 
 
         '''
@@ -1129,28 +1170,53 @@ class PanoramaAPI(_PanPaloShared):
         #                         serial = device['@name']
 
         ## WRITE LOGIC TO FIND OUT IF DEVICE IS ACTIVE OR PASSIVE
+   
 
-        payload = f'''
-                    <entry name="vsys{vsys_id}">
-                        <display-name>{vsys_name}</display-name>
-                    </entry>
+        ''' Payload could also containt colors and comments:
+                                    <tag>
+                                        <color>color15</color>
+                                        <comments>"other date created"</comments>  
+                                    </tag>
+        '''
+        if tag_name:
+            payload = f'''
+                        <entry name="vsys{vsys_id}">
+                            <display-name>{vsys_name}</display-name>
+                            <tag>
+                                <entry name="{tag_name}"></entry>
+                                <entry name="RESDATE:{self.today}"></entry>
+                                
+                            </tag>
+                        </entry>
                         '''
+        else:
+            payload = f'''
+                        <entry name="vsys{vsys_id}">
+                            <display-name>{vsys_name}</display-name>
+                            
+                        </entry>
+                        '''
+        # FIXME: add date created
 
         uri = f'?type=config&target={serial}&action=set&xpath=/config/devices/entry/vsys&element={payload}'
         
         resp = self._get_req(self.xml_uri+uri)
         return self.xml_to_json(resp)['response']
     
-    def delete_vsys(self, vsys_name, vsys_id, serial):
+    
+    def delete_vsys(self, serial:int, vsys_name:str=None, vsys_id:int=None, ):
 
 
         '''
-        set vsys_id to 'auto' to automatically find the next available vsys id
+        Deletes vysys. Requires serial and either vsys_name or vsys_id to be passed. If both are passed, vsys_id will be used.
         
         '''                      
-
-
-        uri = f"?type=config&target={serial}&action=delete&xpath=/config/devices/entry/vsys/entry[@name='vsys{vsys_id}']"
+        if vsys_id:
+            uri = f"?type=config&target={serial}&action=delete&xpath=/config/devices/entry/vsys/entry[@name='vsys{vsys_id}']"
+        elif vsys_name:
+            uri = f"?type=config&target={serial}&action=delete&xpath=/config/devices/entry/vsys/entry[@name='{vsys_name}']"
+        else:
+            raise ValueError("Must pass either vsys_name or vsys_id to delete vsys")
         
         resp = self._post_req(self.xml_uri+uri)
         return self.xml_to_json(resp)['response']
@@ -1246,6 +1312,14 @@ class PanOSAPI(_PanPaloShared):
 
         return references
     
+
+    def get_api_version(self):
+        uri = f"?type=version&key={self.headers['X-PAN-Key']}"
+        resp = self._get_req(self.xml_uri+uri)
+        responseXml = ET.fromstring(resp.content)
+        return responseXml.find('result').find('sw-version').text
+        #return {"status": responseXml.find('result').find('job').find('status').text, 
+    
     def get_sec_rules(self, location="vsys"):
 
         if location == "vsys":
@@ -1273,6 +1347,17 @@ class PanOSAPI(_PanPaloShared):
             return [] # empty
         return resp
 
+
+    def get_tags(self, location:str=None):
+        uri = f'objects/tags'
+        resp = self._get_req(self.rest_uri+uri)
+        if resp.ok and 'entry' in resp.json()['result']:
+            return resp.json()['result']['entry']
+        elif resp.ok and "@total-count" in resp.json()['result'] and resp.json()['result']['@total-count'] == "0":
+            return [] # empty
+        return resp
+
+
     def create_address(self, name, ip_netmask, description="", location="vsys"):
         if location == "vsys":
             uri = f'Objects/Addresses?location={location}&{location}={self.vsys}&name={name}'
@@ -1290,6 +1375,7 @@ class PanOSAPI(_PanPaloShared):
         resp = self._post_req(self.rest_uri+uri,payload)
 
         return resp.json()
+
 
     def get_addressgroup(self, address_group, location="vsys"): 
 
