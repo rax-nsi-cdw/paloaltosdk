@@ -1154,7 +1154,8 @@ class PanoramaAPI(_PanPaloShared):
         '''
 
         
-
+        # serial = serial.split('_')[0]
+        self.logger.info(f"Creating vsys {vsys_name} with id {vsys_id} on device {serial}")
         if str(vsys_id).lower() == 'auto':
             # find next available vsys id automatically
             vsys_id = self.auto_vsysid(serial)
@@ -1176,7 +1177,6 @@ class PanoramaAPI(_PanPaloShared):
         #                         serial = device['@name']
 
         ## WRITE LOGIC TO FIND OUT IF DEVICE IS ACTIVE OR PASSIVE
-   
 
         ''' Payload could also containt colors and comments:
                                     <tag>
@@ -1205,8 +1205,16 @@ class PanoramaAPI(_PanPaloShared):
         # FIXME: add date created
 
         uri = f'?type=config&target={serial}&action=set&xpath=/config/devices/entry/vsys&element={payload}'
-        
-        resp = self._get_req(self.xml_uri+uri)
+        try:
+            resp = self._get_req(self.xml_uri+uri)
+            resp.raise_for_status()
+            
+        except requests.exceptions.HTTPError as e:
+            self.logger.error(f"HTTPError creating vsys: {e}")
+            raise Exception(f"HTTPError creating vsys: {e}")
+        except Exception as e:
+            self.logger.error(f"Error creating vsys: {e}")
+            raise Exception(f"Error creating vsys: {e}")
         return self.xml_to_json(resp)['response']
     
     
@@ -1225,6 +1233,7 @@ class PanoramaAPI(_PanPaloShared):
             raise ValueError("Must pass either vsys_name or vsys_id to delete vsys")
         
         resp = self._post_req(self.xml_uri+uri)
+        self.logger.info(f"Deleted vsys {vsys_name} on device {serial} with response: {self.xml_to_json(resp)['response']}")
         return self.xml_to_json(resp)['response']
     
     
