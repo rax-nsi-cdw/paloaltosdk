@@ -139,7 +139,8 @@ class _PanPaloShared(PanRequests):
 
         if target:
             uri += f'&target={target}'
-        print("\nCommitting changes..")
+        self.logger.info("Committing changes..")
+        # print("\nCommitting changes..")
         resp = self._get_req(self.xml_uri+uri)
         responseXml = ET.fromstring(resp.content)
 
@@ -164,7 +165,8 @@ class _PanPaloShared(PanRequests):
         '''
         uri = f'''?key={self.headers['X-PAN-Key']}&type=commit&action=all&cmd=<commit-all><shared-policy><admin><member>{self.Username}</member></admin></shared-policy></commit-all>'''
         
-        print("\nPushing changes..")
+        self.logger.info("Pushing changes..")
+        # print("\nPushing changes..")
         resp = self._get_req(self.xml_uri+uri)
         responseXml = ET.fromstring(resp.content)
       
@@ -203,7 +205,8 @@ class _PanPaloShared(PanRequests):
         except Exception:
 
             if 'invalid credential' in resp.content.decode('utf-8').lower():
-                print(resp.content)
+                self.logger.info(resp.content)
+                # print(resp.content)
                 raise Exception("Invalid Credentials.")
             else:
                 raise Exception(resp.content)
@@ -386,7 +389,7 @@ class PanoramaAPI(_PanPaloShared):
                     vsys_tags.append({'vsys': vsys['@name'], 'tags': tags})
                 return vsys_tags
     
-    def get_vsys_fields(self, devices:str) -> list:
+    def get_vsys_fields(self, devices:str, get_tags=False) -> list:
         ''' maps out vsys fields for each device'''
         devices_vsys = []
         for device in devices:
@@ -397,9 +400,12 @@ class PanoramaAPI(_PanPaloShared):
                 vsys_in_use = []
                 for vsys in device['vsys']['entry']:
                     
-                    # Show devices doesn't have detailed vsys info (tags)
-                    tags = self.get_vsys_tags(device['serial'], vsys['@name'])
-                    vsys_in_use.append({'@name': vsys['@name'], "display-name": vsys['display-name'], "tags": tags})
+                    # Show devices doesn't have detailed vsys info (tags). Optionally retrieve tags
+                    if get_tags:
+                        tags = self.get_vsys_tags(device['serial'], vsys['@name'])
+                        vsys_in_use.append({'@name': vsys['@name'], "display-name": vsys['display-name'], "tags": tags})
+                    else:
+                        vsys_in_use.append({'@name': vsys['@name'], "display-name": vsys['display-name']})
                 vsys_data['vsys_in_use'] = vsys_in_use
                 vsys_data['vsys_used'] = len(vsys_in_use)
                 devices_vsys.append(vsys_data)
@@ -462,7 +468,7 @@ class PanoramaAPI(_PanPaloShared):
                     if not higher_hostname or not lower_hostname:
                         raise Exception("Unable to determine hostname for HA Peers")
                     
-                    combined_hostname = f"{higher_hostname}__$__{lower_hostname}"
+                    combined_hostname = f"{higher_hostname}_{lower_hostname}"
 
                     ha_combined_vsys_data = {"serial": combined_serial,
                             "hostname": combined_hostname
