@@ -478,12 +478,14 @@ class PanoramaAPI(_PanPaloShared):
                         ha_combined_vsys_data['vsys_used'] = device['vsys_used']
                         ha_combined_vsys_data['vsys_free'] = device['vsys_free']
                         ha_combined_vsys_data['vsys_in_use'] = device['vsys_in_use']
+                        ha_combined_vsys_data['Synced'] = True
                     else:
                         # HA Peers are not synced
-                        ha_combined_vsys_data['vsys_max'] = "PEERS_NOT_SYNCED"
-                        ha_combined_vsys_data['vsys_used'] = "PEERS_NOT_SYNCED"
-                        ha_combined_vsys_data['vsys_free'] = "PEERS_NOT_SYNCED"
-                        ha_combined_vsys_data['vsys_in_use'] = "PEERS_NOT_SYNCED"
+                        ha_combined_vsys_data['vsys_max'] = None
+                        ha_combined_vsys_data['vsys_used'] = None
+                        ha_combined_vsys_data['vsys_free'] = None
+                        ha_combined_vsys_data['vsys_in_use'] = None
+                        ha_combined_vsys_data['Synced'] = False
 
 
                     device_peers_added_to_device_vsys_combined_ha.append(ha_peer_data['serial'])
