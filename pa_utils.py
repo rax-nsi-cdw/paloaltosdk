@@ -6,13 +6,14 @@ from urllib.parse import quote
 import time
 import xml.etree.ElementTree as ET
 import xmltodict
-import json
+# import json
 import datetime
 
 from paloaltosdk.local_exceptions import *
 from tqdm import tqdm
 
 warnings.filterwarnings("ignore")
+
 
 class PanRequests:
 
@@ -52,7 +53,7 @@ class PanRequests:
 
         response = requests.get(f"https://{self.IP}:{self.APIPort}/{uri}", headers=self.headers,
 
-                                 verify=False)
+                                verify=False)
 
         return response
 
@@ -60,7 +61,7 @@ class PanRequests:
 
         response = requests.delete(f"https://{self.IP}:{self.APIPort}/{uri}", headers=self.headers,
 
-                                 verify=False)
+                                   verify=False)
 
         return response
 
@@ -72,8 +73,10 @@ class PanRequests:
 
         return response
 
+
 class DeletionResponse:
-    def __init__(self, requests_resp, referenced_groups_deleted=None, referenced_rules_deleted=None, referenced_addr_objects_deleted=None, object=None):
+    def __init__(self, requests_resp, referenced_groups_deleted=None,
+                 referenced_rules_deleted=None, referenced_addr_objects_deleted=None, object=None):
 
         self._requests_resp = requests_resp
         self.object = object
@@ -89,6 +92,7 @@ class DeletionResponse:
         def __str__(self):
             return self._requests_resp.json()
 
+
 class _PanPaloShared(PanRequests):
 
     def __init__(self):
@@ -100,7 +104,8 @@ class _PanPaloShared(PanRequests):
     def watch(jobId, pb_description="Progress"):
 
         total = 100  # Total progress count (100%)
-        with tqdm(total=total, desc=pb_description, bar_format='Fore.LIGHTBLUE_EX + "{l_bar}{bar:25}|"') as pbar:
+        with tqdm(total=total, desc=pb_description, 
+                  bar_format='Fore.LIGHTBLUE_EX + "{l_bar}{bar:25}|"') as pbar:
             while True:
                 job_status = _PanPaloShared.check_status_of_job(jobId)
                 progress = int(job_status['progress'])
@@ -124,7 +129,9 @@ class _PanPaloShared(PanRequests):
 
         IF no job ID then returns None
         '''
-        uri = f"?key={self.headers['X-PAN-Key']}&type=commit&cmd=<commit></commit>" if not force else f"?key={self.headers['X-PAN-Key']}&type=commit&cmd=<commit><force></force></commit>"
+        uri = (f"?key={self.headers['X-PAN-Key']}&type=commit&cmd=<commit></commit>"
+               if not force else
+               f"?key={self.headers['X-PAN-Key']}&type=commit&cmd=<commit><force></force></commit>")
 
         if target:
             uri += f'&target={target}'
@@ -136,7 +143,9 @@ class _PanPaloShared(PanRequests):
         try:
             jobId = responseXml.find('result').find('job').text
 
-            if not watch:  # even if watching, this verifies if there is indeed a job id. There won't be one if there is nothing to commit
+            if not watch:
+                # even if watching, this verifies if there is indeed a job id.
+                # There won't be one if there is nothing to commit
                 return jobId
         except:
             return None
@@ -150,7 +159,11 @@ class _PanPaloShared(PanRequests):
 
         IF no job ID then returns None
         '''
-        uri = f'''?key={self.headers['X-PAN-Key']}&type=commit&action=all&cmd=<commit-all><shared-policy><admin><member>{self.Username}</member></admin></shared-policy></commit-all>'''
+        uri = (
+            f"?key={self.headers['X-PAN-Key']}&type=commit&action=all&cmd="
+            "<commit-all><shared-policy><admin><member>"
+            f"{self.Username}</member></admin></shared-policy></commit-all>"
+            )
 
         self.logger.info("Pushing changes..")
         # print("\nPushing changes..")
@@ -159,8 +172,9 @@ class _PanPaloShared(PanRequests):
 
         try:
             jobId = responseXml.find('result').find('job').text
-
-            if not watch:  # even if watching, this verifies if there is indeed a job id. There won't be one if there is nothing to commit
+            # even if watching, this verifies if there is indeed a job id.
+            # There won't be one if there is nothing to commit
+            if not watch:  
                 return jobId
         except:
             return None
@@ -184,7 +198,7 @@ class _PanPaloShared(PanRequests):
             self.headers['X-PAN-Key'] = key.text
             try:
                 self.sw_version = self.get_api_version()
-                self.api_version = re.search('\d+\.\d+',self.sw_version).group(0)
+                self.api_version = re.search('\d+\.\d+', self.sw_version).group(0)
                 self.rest_uri = f"/restapi/v{self.api_version}/"
             except Exception as e:
                 self.sw_version = None
@@ -204,7 +218,8 @@ class _PanPaloShared(PanRequests):
         check status goes from ACT
         check result'''
 
-        uri = f"?key={self.headers['X-PAN-Key']}&type=op&cmd=<show><jobs><id>{jobID}</id></jobs></show>"
+        uri = f"?key={self.headers['X-PAN-Key']}&type=op&cmd=<show><jobs><id>{jobID}</id></jobs>" \
+              f"</show>"
 
         resp = self._get_req(self.xml_uri+uri)
         responseXml = ET.fromstring(resp.content)
@@ -217,6 +232,7 @@ class _PanPaloShared(PanRequests):
                     }
         except Exception as e:
             return {"error": e, "api_response": resp.content}
+
 
 class PanoramaAPI(_PanPaloShared):
 
@@ -236,7 +252,8 @@ class PanoramaAPI(_PanPaloShared):
         but the response from API call is that the object is referenced in other places
         like rules or groups.
 
-        This will take the string of that gives where the references are located and converts it to a list
+        This will take the string of that gives 
+        where the references are located and converts it to a list
 
         This is needed because the references come back in one big string
         """
@@ -253,7 +270,7 @@ class PanoramaAPI(_PanPaloShared):
             for i in references_string_split:
                 _shared = re.match('^shared -> (.*)', i)
                 if i:
-                    if not "cannot be deleted because of references from:" in i:
+                    if "cannot be deleted because of references from:" not in i:
                         ref = {}
                         ref_reg = re.match("device-group -> (.*?(?=\->))->(.*)", i)
                         if _shared:
@@ -261,7 +278,7 @@ class PanoramaAPI(_PanPaloShared):
                             ref['reference'] = _shared.group(1).strip()
                         else:
                             ref['device-group'] = ref_reg.group(1).strip()
-                        #FIXME: run function to validate valid device-group here
+                        # FIXME: run function to validate valid device-group here
                             ref['reference'] = ref_reg.group(2).strip()
                         references.append(ref)
 
@@ -278,11 +295,11 @@ class PanoramaAPI(_PanPaloShared):
 
         responseXml = ET.fromstring(resp.content)
         return responseXml.find('result').find('sw-version').text
-        #return {"status": responseXml.find('result').find('job').find('status').text,
+        # return {"status": responseXml.find('result').find('job').find('status').text,
 
     def get_devices(self):
 
-        uri = f'?type=op&cmd=<show><devices><all></all></devices></show>'
+        uri = '?type=op&cmd=<show><devices><all></all></devices></show>'
 
         resp = self._get_req(self.xml_uri+uri)
         return self.xml_to_json(resp)['response']['result']['devices']['entry']
@@ -304,7 +321,8 @@ class PanoramaAPI(_PanPaloShared):
 
     def get_sys_limits(self, sn, filter='cfg.general.max*'):
 
-        uri = f'?type=op&cmd=<show><system><state><filter>{filter}</filter></state></system></show>&target={sn}'
+        uri = (f'?type=op&cmd=<show><system><state><filter>{filter}</filter></state>'
+               f'</system></show>&target={sn}')
         resp = self._get_req(self.xml_uri+uri)
         return self.xml_to_json(resp)['response']['result']
 
