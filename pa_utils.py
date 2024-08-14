@@ -321,8 +321,11 @@ class PanoramaAPI(_PanPaloShared):
 
     def get_sys_limits(self, sn, filter='cfg.general.max*'):
 
-        uri = (f'?type=op&cmd=<show><system><state><filter>{filter}</filter></state>'
-               f'</system></show>&target={sn}')
+        uri = (
+            f'?type=op&cmd=<show><system><state><filter>{filter}</filter></state>'
+            f'</system></show>'
+            f'&target={sn}'
+        )
         resp = self._get_req(self.xml_uri+uri)
         return self.xml_to_json(resp)['response']['result']
 
@@ -334,7 +337,7 @@ class PanoramaAPI(_PanPaloShared):
         if max_vsys_in_hex:
             return int(max_vsys_in_hex.group(1), 16)
 
-        max_vsys = re.search('max-vsys:\s+(\d+)', sys_limit_resp)
+        max_vsys = re.search('max-vsys:\\s+(\\d+)', sys_limit_resp)
 
         if max_vsys:
             return int(max_vsys.group(1))
@@ -342,7 +345,7 @@ class PanoramaAPI(_PanPaloShared):
         return None
 
     def get_current_used_vsys(self, sn, devices=None):
-        if devices == None:
+        if devices is None:
             devices = self.get_devices()
         for device in devices:
             if device['serial'] == sn:
@@ -369,7 +372,9 @@ class PanoramaAPI(_PanPaloShared):
         '''Returns tags for a vsys'''
         xpath = f"/config/devices/entry/vsys/entry[@name='{vsys_name}']/tag"
         resp = self.config_xml_generic(xpath=xpath, serial=sn, action='get')
-        if resp['result'] is not None and 'tag' in resp['result'] and 'entry' in resp['result']['tag']:
+        if (resp['result'] is not None and
+                'tag' in resp['result'] and
+                'entry' in resp['result']['tag']):
             return resp['result']['tag']['entry']
         else:
             return None  # or any default value you prefer
@@ -390,15 +395,21 @@ class PanoramaAPI(_PanPaloShared):
             if device['multi-vsys'] == "yes":
                 vsys_free = self.get_remaining_vsys(device['serial'])
                 vsys_max = self.get_vsys_max(device['serial'])
-                vsys_data = {'hostname': device['hostname'], 'serial': device['serial'], 'vsys_free': vsys_free, 'vsys_max': vsys_max, "ha_peer": device['ha']['peer']['serial'] if 'ha' in device else None }
+                vsys_data = {'hostname': device['hostname'],
+                             'serial': device['serial'],
+                             'vsys_free': vsys_free,
+                             'vsys_max': vsys_max,
+                             "ha_peer": device['ha']['peer']['serial'] if 'ha' in device else None}
                 vsys_in_use = []
                 for vsys in device['vsys']['entry']:
                     # Show devices doesn't have detailed vsys info (tags). Optionally retrieve tags
                     if get_tags:
                         tags = self.get_vsys_tags(device['serial'], vsys['@name'])
-                        vsys_in_use.append({'@name': vsys['@name'], "display-name": vsys['display-name'], "tags": tags})
+                        vsys_in_use.append({'@name': vsys['@name'],
+                                            "display-name": vsys['display-name'], "tags": tags})
                     else:
-                        vsys_in_use.append({'@name': vsys['@name'], "display-name": vsys['display-name']})
+                        vsys_in_use.append({'@name': vsys['@name'],
+                                            "display-name": vsys['display-name']})
                 vsys_data['vsys_in_use'] = vsys_in_use
                 vsys_data['vsys_used'] = len(vsys_in_use)
                 devices_vsys.append(vsys_data)
@@ -455,7 +466,7 @@ class PanoramaAPI(_PanPaloShared):
                     combined_hostname = f"{higher_hostname}_{lower_hostname}"
                     ha_combined_vsys_data = {"serial": combined_serial,
                                              "hostname": combined_hostname
-                                            }
+                                             }
                     if (
                         device['vsys_max'] == ha_peer_data['vsys_max'] and
                         device['vsys_used'] == ha_peer_data['vsys_used'] and
@@ -509,7 +520,8 @@ class PanoramaAPI(_PanPaloShared):
 
         if resp.ok and 'entry' in resp.json()['result']:
             return resp.json()['result']['entry']
-        elif resp.ok and "@total-count" in resp.json()['result'] and resp.json()['result']['@total-count'] == "0":
+        elif resp.ok and "@total-count" in resp.json()['result'] and \
+                resp.json()['result']['@total-count'] == "0":
             return []  # empty
         return resp
 
@@ -535,16 +547,22 @@ class PanoramaAPI(_PanPaloShared):
     def get_addressgroup(self, address_group, device_group):
 
         if device_group.lower() != "shared":
-            uri = f'Objects/AddressGroups?location=device-group&device-group={device_group}&name={address_group}'
+            uri = (
+                f'Objects/AddressGroups?location=device-group&device-group={device_group}'
+                f'&name={address_group}'
+            )
         else:
             uri = f'Objects/AddressGroups?location={device_group}&name={address_group}'
 
         resp = self._get_req(self.rest_uri+uri)
 
-        if resp.ok and "@total-count" in resp.json()['result'] and int(resp.json()['result']['@total-count']) > 1:
-            raise Exception(f"Multiple address groups detected for address group '{address_group}' in Device Group '{device_group}'")
+        if resp.ok and "@total-count" in resp.json()['result'] and \
+                int(resp.json()['result']['@total-count']) > 1:
+            raise Exception(f"Multiple address groups detected for address group '{address_group}' "
+                            f"in Device Group '{device_group}'")
 
-        elif resp.ok and "@total-count" in resp.json()['result'] and resp.json()['result']['@total-count'] == "0":
+        elif resp.ok and "@total-count" in resp.json()['result'] and \
+                resp.json()['result']['@total-count'] == "0":
             return [] # empty
 
         elif resp.ok and 'entry' in resp.json()['result']:
