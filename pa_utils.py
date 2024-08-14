@@ -100,7 +100,7 @@ class _PanPaloShared(PanRequests):
     def watch(jobId, pb_description="Progress"):
 
         total = 100  # Total progress count (100%)
-        with tqdm(total=total, desc=pb_description, bar_format=Fore.LIGHTBLUE_EX + "{l_bar}{bar:25}|") as pbar:
+        with tqdm(total=total, desc=pb_description, bar_format='Fore.LIGHTBLUE_EX + "{l_bar}{bar:25}|"') as pbar:
             while True:
                 job_status = _PanPaloShared.check_status_of_job(jobId)
                 progress = int(job_status['progress'])
