@@ -106,7 +106,7 @@ class _PanPaloShared(PanRequests):
     def watch(jobId, pb_description="Progress"):
 
         total = 100  # Total progress count (100%)
-        with tqdm(total=total, desc=pb_description, 
+        with tqdm(total=total, desc=pb_description,
                   bar_format='Fore.LIGHTBLUE_EX + "{l_bar}{bar:25}|"') as pbar:
             while True:
                 job_status = _PanPaloShared.check_status_of_job(jobId)
@@ -177,7 +177,7 @@ class _PanPaloShared(PanRequests):
             jobId = responseXml.find('result').find('job').text
             # even if watching, this verifies if there is indeed a job id.
             # There won't be one if there is nothing to commit
-            if not watch:  
+            if not watch:
                 return jobId
         except Exception as e:
             self.logger.error(e)
@@ -202,7 +202,7 @@ class _PanPaloShared(PanRequests):
             self.headers['X-PAN-Key'] = key.text
             try:
                 self.sw_version = self.get_api_version()
-                self.api_version = re.search('\d+\.\d+', self.sw_version).group(0)
+                self.api_version = re.search('\\d+\\.\\d+', self.sw_version).group(0)
                 self.rest_uri = f"/restapi/v{self.api_version}/"
             except Exception as e:
                 self.sw_version = None
@@ -256,7 +256,7 @@ class PanoramaAPI(_PanPaloShared):
         but the response from API call is that the object is referenced in other places
         like rules or groups.
 
-        This will take the string of that gives 
+        This will take the string of that gives
         where the references are located and converts it to a list
 
         This is needed because the references come back in one big string
@@ -276,7 +276,7 @@ class PanoramaAPI(_PanPaloShared):
                 if i:
                     if "cannot be deleted because of references from:" not in i:
                         ref = {}
-                        ref_reg = re.match("device-group -> (.*?(?=\->))->(.*)", i)
+                        ref_reg = re.match("device-group -> (.*?(?=\\->))->(.*)", i)
                         if _shared:
                             ref['device-group'] = "shared"
                             ref['reference'] = _shared.group(1).strip()
@@ -337,7 +337,7 @@ class PanoramaAPI(_PanPaloShared):
 
         sys_limit_resp = self.get_sys_limits(sn, filter='cfg.general.max-vsys*')
 
-        max_vsys_in_hex = re.search('max-vsys:\s+(0x.*)', sys_limit_resp)
+        max_vsys_in_hex = re.search('max-vsys:\\s+(0x.*)', sys_limit_resp)
         if max_vsys_in_hex:
             return int(max_vsys_in_hex.group(1), 16)
 
@@ -653,8 +653,10 @@ class PanoramaAPI(_PanPaloShared):
         if "@status" in resp2.json() and resp2.json()['@status'] == 'success':
             self.logger.info(f"Deleted address group object {address_group}")
             return DeletionResponse(requests_resp=resp2,
-                                    referenced_groups_deleted=reference_remove_resp.referenced_groups_deleted,
-                                    referenced_rules_deleted=reference_remove_resp.referenced_rules_deleted,
+                                    referenced_groups_deleted=(
+                                        reference_remove_resp.referenced_groups_deleted),
+                                    referenced_rules_deleted=(
+                                        reference_remove_resp.referenced_rules_deleted),
                                     object=address_group)
         else:
             try:
@@ -670,9 +672,9 @@ class PanoramaAPI(_PanPaloShared):
                        force_deletion_of_all_objects_referenced=None):
         '''
         params;
-        force: This will remove direct references 
+        force: This will remove direct references
         (delete the reference if it is last object in references)
-        force_deletion_of_all_objects_referenced: 
+        force_deletion_of_all_objects_referenced:
         This will do the same as force AND will remove references of references, etc.
 
         !!!!! WARNING: setting force will ALSO set force_deletion_of_all_objects_referenced
@@ -716,14 +718,17 @@ class PanoramaAPI(_PanPaloShared):
         if "@status" in resp2.json() and resp2.json()['@status'] == 'success':
             self.logger.info(f"Deleted address object {address_name}")
             return DeletionResponse(requests_resp=resp2,
-                                    referenced_groups_deleted=reference_remove_resp.referenced_groups_deleted,
-                                    referenced_rules_deleted=reference_remove_resp.referenced_rules_deleted,
+                                    referenced_groups_deleted=(
+                                        reference_remove_resp.referenced_groups_deleted),
+                                    referenced_rules_deleted=(
+                                        reference_remove_resp.referenced_rules_deleted),
                                     object=address_name)
         else:
             try:
                 raise Exception(f"Unable to delete object '{address_name}'."
                                 f"\n Error: {resp2.json()}")
-            except:
+            except Exception as e:
+                self.logger.error(e)
                 raise Exception(f"Unable to delete object '{address_name}'.")
 
     # @staticmethod
@@ -1023,10 +1028,10 @@ class PanoramaAPI(_PanPaloShared):
             else:
                 raise Exception(f"Unable to determine rulebase for reference: {reference}")
 
-            r = re.match(f"{rulebase}-rulebase -> security -> rules -> (.*\.$)", reference)
-            rule_name_reg = re.search("(.*) -> source\.", r.group(1))
+            r = re.match(f"{rulebase}-rulebase -> security -> rules -> (.*\\.$)", reference)
+            rule_name_reg = re.search("(.*) -> source\\.", r.group(1))
             if not rule_name_reg:
-                rule_name_reg = re.search("(.*) -> destination\.", r.group(1))
+                rule_name_reg = re.search("(.*) -> destination\\.", r.group(1))
                 if not rule_name_reg:
                     raise Exception(f"Unable to determine rule_name for reference {reference}")
                 else:
@@ -1066,7 +1071,7 @@ class PanoramaAPI(_PanPaloShared):
             else:
                 raise Exception(f"Unable to determine rulebase for reference: {reference}")
 
-            r = re.match(f"{rulebase}-rulebase -> nat -> rules -> (.*\.$)", reference)
+            r = re.match(f"{rulebase}-rulebase -> nat -> rules -> (.*\\.$)", reference)
 
             # With NAT Rules you have source and destination
             #  and also translated source & translated destination.
@@ -1100,7 +1105,7 @@ class PanoramaAPI(_PanPaloShared):
                 translation_type = translation_type_reg.group(2)
 
             else:
-                r = re.match(f"{rulebase}-rulebase -> nat -> rules -> (.*\.$)", reference)
+                r = re.match(f"{rulebase}-rulebase -> nat -> rules -> (.*\\.$)", reference)
                 rule_name_reg = re.search("(.*) -> source\\.", r.group(1))
                 if not rule_name_reg:
                     rule_name_reg = re.search("(.*) -> destination\\.", r.group(1))
@@ -1523,7 +1528,7 @@ class PanOSAPI(_PanPaloShared):
         if resp.ok and 'entry' in resp.json()['result']:
             return resp.json()['result']['entry']
         elif (resp.ok and
-              "@total-count" in resp.json()['result'] and 
+              "@total-count" in resp.json()['result'] and
               resp.json()['result']['@total-count'] == "0"):
             return []  # empty
         return resp
@@ -1574,9 +1579,9 @@ class PanOSAPI(_PanPaloShared):
             raise Exception(f"Multiple address groups detected for address group '{address_group}'")
 
         elif (resp.ok and
-              "@total-count" in resp.json()['result'] and 
+              "@total-count" in resp.json()['result'] and
               resp.json()['result']['@total-count'] == "0"):
-            return [] # empty
+            return []  # empty
 
         elif resp.ok and 'entry' in resp.json()['result']:
             return resp.json()['result']['entry'][0]
@@ -1608,7 +1613,7 @@ class PanOSAPI(_PanPaloShared):
 
         '''
         params;
-        force: This will remove direct references 
+        force: This will remove direct references
         (delete the reference if it is last object in references)
         force_deletion_of_all_objects_referenced: This will do the same as force
         AND will remove references of references, etc.
@@ -1620,11 +1625,14 @@ class PanOSAPI(_PanPaloShared):
         if not isinstance(force, bool):
             raise ValueError("force must be a boolean")
 
-        if force_deletion_of_all_objects_referenced == None:
+        if force_deletion_of_all_objects_referenced is None:
             force_deletion_of_all_objects_referenced = force
 
         if location == "vsys":
-            uri = f'Objects/AddressGroups?location={location}&{location}={self.vsys}&name={address_group}'
+            uri = (
+                f'Objects/AddressGroups?location={location}&{location}={self.vsys}'
+                f'&name={address_group}'
+            )
         else:
             uri = f'Objects/AddressGroups?location={location}&name={address_group}'
 
@@ -1657,14 +1665,17 @@ class PanOSAPI(_PanPaloShared):
         if "@status" in resp2.json() and resp2.json()['@status'] == 'success':
             self.logger.info(f"Deleted address group object {address_group}")
             return DeletionResponse(requests_resp=resp2,
-                                    referenced_groups_deleted=reference_remove_resp.referenced_groups_deleted,
-                                    referenced_rules_deleted=reference_remove_resp.referenced_rules_deleted,
+                                    referenced_groups_deleted=(
+                                        reference_remove_resp.referenced_groups_deleted),
+                                    referenced_rules_deleted=(
+                                        reference_remove_resp.referenced_rules_deleted),
                                     object=address_group)
 
         else:
             try:
                 raise Exception(f"Unable to delete object '{address_group}'. \n Error: {resp2.json()}")
-            except:
+            except Exception as e:
+                self.logger.error(e)
                 raise Exception(f"Unable to delete object '{address_group}'.")
 
     def delete_address(self,
@@ -1679,7 +1690,7 @@ class PanOSAPI(_PanPaloShared):
         force_deletion_of_all_objects_referenced:
         This will do the same as force AND will remove references of references, etc.
 
-        !!!!! WARNING: setting force will ALSO set 
+        !!!!! WARNING: setting force will ALSO set
         force_deletion_of_all_objects_referenced to same value.
         To have different values, set them both manually !!!!!
         '''
@@ -1711,7 +1722,9 @@ class PanOSAPI(_PanPaloShared):
 
         # If object can't be deleted because of references, this will delete refs if force switch == True
 
-        reference_remove_resp = self._filter_and_remove_obj_references(resp.json(), address_name, force=force)
+        reference_remove_resp = self._filter_and_remove_obj_references(resp.json(),
+                                                                       address_name,
+                                                                       force=force)
 
         resp2 = self._del_req(self.rest_uri+uri)
 
@@ -1719,18 +1732,35 @@ class PanOSAPI(_PanPaloShared):
 
         if "@status" in resp2.json() and resp2.json()['@status'] == 'success':
             self.logger.info(f"Deleted address object {address_name}")
-            return DeletionResponse(requests_resp=resp2, referenced_groups_deleted=reference_remove_resp.referenced_groups_deleted, referenced_rules_deleted=reference_remove_resp.referenced_rules_deleted, object=address_name)
+            return DeletionResponse(requests_resp=resp2,
+                                    referenced_groups_deleted=(
+                                        reference_remove_resp.referenced_groups_deleted),
+                                    referenced_rules_deleted=(
+                                        reference_remove_resp.referenced_rules_deleted),
+                                    object=address_name)
 
         else:
             try:
                 raise Exception(f"Unable to delete object '{address_name}'. \n Error: {resp2.json()}")
-            except:
+            except Exception as e:
+                self.logger.error(e)
                 raise Exception(f"Unable to delete object '{address_name}'.")
 
-    def remove_address_from_rule(self, address_name, rule_name, rule_type, direction, force=False, translation_direction=None, translation_type=None, location="vsys"):
+    def remove_address_from_rule(self,
+                                 address_name,
+                                 rule_name,
+                                 rule_type,
+                                 direction,
+                                 force=False,
+                                 translation_direction=None,
+                                 translation_type=None,
+                                 location="vsys"):
 
         if location == "vsys":
-            uri = f'Policies/{rule_type}Rules?location={location}&{location}={self.vsys}&name={rule_name}'
+            uri = (
+                f'Policies/{rule_type}Rules?location={location}&{location}={self.vsys}'
+                f'&name={rule_name}'
+            )
         else:
             uri = f'Policies/{rule_type}Rules?location={location}&name={rule_name}'
 
@@ -1743,12 +1773,14 @@ class PanOSAPI(_PanPaloShared):
                 if translation_type == 'static-ip':
                     # Unable to remove static ip as you cannot have none. Raising Exception
                     raise EmptySourceTranslationForRule(
-                        description="Unable to remove address object from rule due to it is the last object in rule. Please, delete the rule.",
+                        description=("Unable to remove address object from rule due to it"
+                                     " is the last object in rule. "
+                                     "Please, delete the rule."),
                         last_object=address_name,
 
                         rule_name=rule_name,
                         rule_type=rule_type,
-                        location= location,
+                        location=location,
 
                         direction=direction,
                         translation_type=translation_type,
@@ -1759,7 +1791,8 @@ class PanOSAPI(_PanPaloShared):
 
                 if len(rule[direction]['member']) == 0:
                     raise EmptyDirectionForRule(
-                        description="Unable to remove address object from rule due to it is the last object in rule. Please, delete the rule.",
+                        description=("Unable to remove address object from rule due to it is "
+                                     "the last object in rule. Please, delete the rule."),
                         last_object=address_name,
 
                         rule_name=rule_name,
@@ -1776,13 +1809,14 @@ class PanOSAPI(_PanPaloShared):
                 return resp.json()
 
         elif rule_type.lower() == 'security':
-        # Security Rule Logic
+            # Security Rule Logic
 
             rule[direction]['member'].remove(address_name)
 
             if len(rule[direction]['member']) == 0:
                 raise EmptyDirectionForRule(
-                    description="Unable to remove address object from rule due to it is the last object in rule. Please, delete the rule.",
+                    description=("Unable to remove address object from rule due to it "
+                                 "is the last object in rule. Please, delete the rule."),
                     last_object=address_name,
 
                     rule_name=rule_name,
@@ -1799,14 +1833,24 @@ class PanOSAPI(_PanPaloShared):
 
             return resp.json()
 
-    def remove_addressgroup_from_rule(self, address_group, rule_name, rule_type, rulebase, direction, force=False, location="vsys"):
-        if not type(rulebase) == str:
+    def remove_addressgroup_from_rule(self,
+                                      address_group,
+                                      rule_name,
+                                      rule_type,
+                                      rulebase,
+                                      direction,
+                                      force=False,
+                                      location="vsys"):
+        if not type(rulebase) is str:
             raise ValueError("rulebase arg must be string.")
         if rulebase.lower() not in ['pre', 'post', 'default']:
             raise ValueError("rulebase arg must be 'pre' or 'post'")
 
         if location == "vsys":
-            uri = f'Policies/{rule_type}{rulebase}Rules?location={location}&{location}={self.vsys}&name={rule_name}'
+            uri = (
+                f'Policies/{rule_type}{rulebase}Rules?location={location}&{location}='
+                f'{self.vsys}&name={rule_name}'
+            )
         else:
             uri = f'Policies/{rule_type}{rulebase}Rules?location={location}&name={rule_name}'
 
@@ -1815,7 +1859,8 @@ class PanOSAPI(_PanPaloShared):
 
         if len(rule[direction]['member']) == 0:
             raise EmptyDirectionForRule(
-                description="Unable to remove address object from rule due to it is the last rule. Please, delete the rule.",
+                description=("Unable to remove address object from rule due "
+                             "to it is the last rule. Please, delete the rule."),
                 last_object=address_group,
 
                 rule_name=rule_name,
@@ -1836,7 +1881,10 @@ class PanOSAPI(_PanPaloShared):
     def remove_address_from_addressgroup(self, address_name, address_group_name, location="vsys"):
 
         if location == "vsys":
-            uri = f'Objects/AddressGroups?location={location}&{location}={self.vsys}&name={address_group_name}'
+            uri = (
+                f'Objects/AddressGroups?location={location}&{location}='
+                f'{self.vsys}&name={address_group_name}'
+            )
         else:
             uri = f'Objects/AddressGroups?location={location}&name={address_group_name}'
 
@@ -1848,7 +1896,8 @@ class PanOSAPI(_PanPaloShared):
 
             # resp = self.delete_address_group(address_group_name, device_group)
             raise EmptyAddressGroup(
-                description= f"Unable to remove address {address_name} due to it being the last object in the group. You must delete the group.",
+                description=("Unable to remove address {address_name} due to it being the last object "
+                             "in the group. You must delete the group."),
                 address_group=address_group_name,
 
                 location=location
@@ -1867,7 +1916,10 @@ class PanOSAPI(_PanPaloShared):
     def delete_rule(self, rule_name, rule_type, location):
 
         if location == "vsys":
-            uri = f'Policies/{rule_type}Rules?location={location}&{location}={self.vsys}&name={rule_name}'
+            uri = (
+                f'Policies/{rule_type}Rules?location={location}&{location}='
+                f'{self.vsys}&name={rule_name}'
+            )
         else:
             uri = f'Policies/{rule_type}Rules?location={location}&name={rule_name}'
 
@@ -1880,16 +1932,23 @@ class PanOSAPI(_PanPaloShared):
         # NOTE: For some reason rule comes back as an array, removed arrary on return
 
         if location == "vsys":
-            uri = f'Policies/{rule_type}Rules?location={location}&{location}={self.vsys}&name={rule_name}'
+            uri = (
+                f'Policies/{rule_type}Rules?location={location}&{location}='
+                f'{self.vsys}&name={rule_name}'
+            )
         else:
             uri = f'Policies/{rule_type}Rules?location={location}&name={rule_name}'
 
         resp = self._get_req(self.rest_uri+uri)
 
-        if resp.ok and "@total-count" in resp.json()['result'] and int(resp.json()['result']['@total-count']) > 1:
+        if (resp.ok and
+            "@total-count" in resp.json()['result'] and
+                int(resp.json()['result']['@total-count']) > 1):
             raise Exception(f"Multiple rules detected for rule '{rule_name}'")
 
-        elif resp.ok and "@total-count" in resp.json()['result'] and resp.json()['result']['@total-count'] == "0":
+        elif (resp.ok and
+              "@total-count" in resp.json()['result'] and
+              resp.json()['result']['@total-count'] == "0"):
             return []  # empty
 
         elif resp.ok and 'entry' in resp.json()['result']:
@@ -1897,10 +1956,13 @@ class PanOSAPI(_PanPaloShared):
 
         return resp.json()
 
-    def create_rule(self, name, rule_type, source, destination, action, service="any", application="any", _from="any", _to="any", location="vsys"):
+    def create_rule(self, name, rule_type, source, destination, action,
+                    service="any", application="any", _from="any", _to="any", location="vsys"):
 
         if action not in ["deny", "allow", "drop", "reset-client", "reset-server", "reset-both"]:
-            raise ValueError('"action" parameter must be one of the following: "deny" "allow" "drop" "reset-client" "reset-server" "reset-both"')
+            raise ValueError('"action" parameter must be one of the following: '
+                             '"deny" "allow" "drop" "reset-client" "reset-server" '
+                             '"reset-both"')
 
         if rule_type.lower() != "security":
             raise ValueError("This method only supports Security rules at the moment")
@@ -1947,10 +2009,10 @@ class PanOSAPI(_PanPaloShared):
 
         # raise Exception(f"Unable to determine rulebase for reference: {reference}")
 
-            r = re.match(f"rulebase -> security -> rules -> (.*\.$)", reference)
-            rule_name_reg = re.search("(.*) -> source\.", r.group(1))
+            r = re.match("rulebase -> security -> rules -> (.*\\.$)", reference)
+            rule_name_reg = re.search("(.*) -> source\\.", r.group(1))
             if not rule_name_reg:
-                rule_name_reg = re.search("(.*) -> destination\.", r.group(1))
+                rule_name_reg = re.search("(.*) -> destination\\.", r.group(1))
                 if not rule_name_reg:
                     raise Exception(f"Unable to determine rule_name for reference {reference}")
                 else:
@@ -1961,9 +2023,11 @@ class PanOSAPI(_PanPaloShared):
 
                 direction = "source"
 
-            resp = self.remove_address_from_rule(address_name=object_name, rule_name=rule_name, rule_type=rule_type,
-
-                                             location=location, direction=direction)
+            resp = self.remove_address_from_rule(address_name=object_name,
+                                                 rule_name=rule_name,
+                                                 rule_type=rule_type,
+                                                 location=location,
+                                                 direction=direction)
             if '@status' in resp and resp['@status'] == "success":
 
                 self.logger.info(f"Removed address object_name from rule {rule_name}")
@@ -1977,12 +2041,14 @@ class PanOSAPI(_PanPaloShared):
             translation_direction = None
             translation_type = None
 
-            r = re.match(f"rulebase -> nat -> rules -> (.*\.$)", reference)
+            r = re.match("rulebase -> nat -> rules -> (.*\\.$)", reference)
 
-            # With NAT Rules you have source and destination and also translated source & translated destination.
+            # With NAT Rules you have source and destination
+            # and also translated source & translated destination.
             # The next part of code determines which is referenced
 
-            if ' -> source-translation -> ' in r.group(1) or ' -> destination-translation -> ' in r.group(1):
+            if (' -> source-translation -> ' in r.group(1) or
+                    ' -> destination-translation -> ' in r.group(1)):
 
                 rule_name_reg = re.search("(.*) -> source-translation -> ", r.group(1))
 
@@ -1999,16 +2065,20 @@ class PanOSAPI(_PanPaloShared):
 
                     translation_direction = "source-translation"
 
-                translation_type_reg = re.search(f" -> {translation_direction} -> ((.*) -> )", r.group(1))
+                translation_type_reg = re.search(
+                    f" -> {translation_direction} -> ((.*) -> )",
+                    r.group(1)
+                )
                 if not translation_type_reg:
-                    raise Exception(f"Unable to determine translation type (ex. static, dynamic, etc.) for reference {reference}")
+                    raise Exception(("Unable to determine translation type "
+                                     f"(ex. static, dynamic, etc.) for reference {reference}"))
                 translation_type = translation_type_reg.group(2)
 
             else:
-                r = re.match(f"rulebase -> nat -> rules -> (.*\.$)", reference)
-                rule_name_reg = re.search("(.*) -> source\.", r.group(1))
+                r = re.match("rulebase -> nat -> rules -> (.*\\.$)", reference)
+                rule_name_reg = re.search("(.*) -> source\\.", r.group(1))
                 if not rule_name_reg:
-                    rule_name_reg = re.search("(.*) -> destination\.", r.group(1))
+                    rule_name_reg = re.search("(.*) -> destination\\.", r.group(1))
                     if not rule_name_reg:
                         raise Exception(f"Unable to determine rule_name for reference {reference}")
                     else:
@@ -2020,13 +2090,17 @@ class PanOSAPI(_PanPaloShared):
                     direction = "source"
 
             if translation_direction and translation_type:
-                resp = self.remove_address_from_rule(address_name=object_name, rule_name=rule_name, rule_type=rule_type,
-
-                                             direction=direction, translation_type=translation_type, translation_direction=translation_direction)
+                resp = self.remove_address_from_rule(address_name=object_name,
+                                                     rule_name=rule_name,
+                                                     rule_type=rule_type,
+                                                     direction=direction,
+                                                     translation_type=translation_type,
+                                                     translation_direction=translation_direction)
             else:
-                resp = self.remove_address_from_rule(address_name=object_name, rule_name=rule_name, rule_type=rule_type,
-
-                                             direction=direction)
+                resp = self.remove_address_from_rule(address_name=object_name,
+                                                     rule_name=rule_name,
+                                                     rule_type=rule_type,
+                                                     direction=direction)
 
             if '@status' in resp and resp['@status'] == "success":
 
@@ -2045,26 +2119,32 @@ class PanOSAPI(_PanPaloShared):
                 self.logger.info(f"Removed address {object_name} from address group {address_group}")
 
         else:
-            raise Exception(f"Unable to delete object {object_name} \nReferenced object type not supported for deletion:  {reference}'")
+            raise Exception((f"Unable to delete object {object_name} \n"
+                             "Referenced object type not supported for deletion:  {reference}'"))
 
-    def _filter_and_remove_obj_references(self, json_resp_from_failure_to_remove_delete_item, obj_name, force=False):
+    def _filter_and_remove_obj_references(self, json_resp_from_failure_to_remove_delete_item,
+                                          obj_name, force=False):
 
         referenced_groups_deleted = []
         referenced_rules_deleted = []
 
-         # If object can't be deleted because of references, this will delete refs
+        # If object can't be deleted because of references, this will delete refs
         first_ref_has_not_been_deleted = True
         while first_ref_has_not_been_deleted:
 
             resp = json_resp_from_failure_to_remove_delete_item
             if resp['message'].lower() == "reference not zero" and "details" in resp:
-                self.logger.info(f"Found References for object {obj_name}. Remove object from References...")
+                self.logger.info(f"Found References for object {obj_name}. "
+                                 f"Remove object from References...")
 
                 for detail in resp['details']:
                     if "@type" in detail and detail['@type'].lower() == "causeinfo":
                         for cause in detail['causes']:
-                            if f"{obj_name} cannot be deleted because of references from:" in cause["description"]:
-                                references = self._convert_reference_response_to_list(cause["description"])
+                            if (f"{obj_name} cannot be deleted because of references from:"
+                                    in cause["description"]):
+                                references = self._convert_reference_response_to_list(
+                                    cause["description"]
+                                )
 
                 for reference in references:
                     try:
@@ -2073,9 +2153,19 @@ class PanOSAPI(_PanPaloShared):
                     except EmptyDirectionForRule as e:
 
                         if force:
-                            resp = self.delete_rule(rule_name=e.rule_name, rule_type=e.rule_type, location=e.location)
-                            referenced_groups_deleted = referenced_groups_deleted + resp.referenced_groups_deleted if resp.referenced_groups_deleted else referenced_groups_deleted
-                            referenced_rules_deleted = referenced_rules_deleted + resp.referenced_rules_deleted if resp.referenced_rules_deleted else referenced_rules_deleted
+                            resp = self.delete_rule(
+                                rule_name=e.rule_name,
+                                rule_type=e.rule_type,
+                                location=e.location
+                            )
+                            referenced_groups_deleted = referenced_groups_deleted + \
+                                resp.referenced_groups_deleted \
+                                if resp.referenced_groups_deleted else referenced_groups_deleted
+                            referenced_rules_deleted = (
+                                referenced_rules_deleted + resp.referenced_rules_deleted
+                                if resp.referenced_rules_deleted
+                                else referenced_rules_deleted
+                            )
                             referenced_rules_deleted.append(e.rule_name)
                             self.logger.info(f"Deleted reference: Rule {e.rule_name}")
 
@@ -2084,9 +2174,19 @@ class PanOSAPI(_PanPaloShared):
 
                     except EmptyAddressGroup as e:
                         if force:
-                            resp = self.delete_address_group(address_group=e.address_group, location=e.location, force=force)
-                            referenced_groups_deleted = referenced_groups_deleted + resp.referenced_groups_deleted if resp.referenced_groups_deleted else referenced_groups_deleted
-                            referenced_rules_deleted = referenced_rules_deleted + resp.referenced_rules_deleted if resp.referenced_rules_deleted else referenced_rules_deleted
+                            resp = self.delete_address_group(
+                                address_group=e.address_group,
+                                location=e.location,
+                                force=force
+                            )
+                            referenced_groups_deleted = (referenced_groups_deleted +
+                                                         resp.referenced_groups_deleted
+                                                         if resp.referenced_groups_deleted
+                                                         else referenced_groups_deleted)
+                            referenced_rules_deleted = (referenced_rules_deleted +
+                                                        resp.referenced_rules_deleted
+                                                        if resp.referenced_rules_deleted
+                                                        else referenced_rules_deleted)
                             referenced_groups_deleted.append(e.address_group)
                             self.logger.info(f"Deleted reference: Address Group {e.address_group}")
                         else:
@@ -2095,9 +2195,18 @@ class PanOSAPI(_PanPaloShared):
                     except EmptySourceTranslationForRule as e:
 
                         if force:
-                            self.delete_rule(rule_name=e.rule_name, rule_type=e.rule_type, location=e.location)
-                            referenced_groups_deleted = referenced_groups_deleted + resp.referenced_groups_deleted if resp.referenced_groups_deleted else referenced_groups_deleted
-                            referenced_rules_deleted = referenced_rules_deleted + resp.referenced_rules_deleted if resp.referenced_rules_deleted else referenced_rules_deleted
+                            self.delete_rule(rule_name=e.rule_name,
+                                             rule_type=e.rule_type,
+                                             location=e.location)
+                            referenced_groups_deleted = (referenced_groups_deleted +
+                                                         resp.referenced_groups_deleted
+                                                         if resp.referenced_groups_deleted
+                                                         else referenced_groups_deleted)
+                            referenced_rules_deleted = (
+                                referenced_rules_deleted + resp.referenced_rules_deleted
+                                if resp.referenced_rules_deleted
+                                else referenced_rules_deleted
+                            )
                             referenced_rules_deleted.append(e.rule_name)
                             self.logger.info(f"Deleted reference: Rule {e.rule_name}")
                         else:
@@ -2105,14 +2214,16 @@ class PanOSAPI(_PanPaloShared):
 
             first_ref_has_not_been_deleted = False
 
-        return DeletionResponse(requests_resp=None, referenced_groups_deleted=referenced_groups_deleted, referenced_rules_deleted=referenced_rules_deleted)
+        return DeletionResponse(requests_resp=None,
+                                referenced_groups_deleted=referenced_groups_deleted,
+                                referenced_rules_deleted=referenced_rules_deleted)
 
     def decommission_server(self, servers_to_decommission):
 
         if type(servers_to_decommission) is str:
             servers_to_decommission = [servers_to_decommission]
 
-        found_obj = False
+        # found_obj = False
         del_response_objects = []
 
         # query all addresses and loop through to find all addresses
@@ -2120,7 +2231,8 @@ class PanOSAPI(_PanPaloShared):
 
         for decomm_server in servers_to_decommission:
             for address in addresses:
-                if 'ip-netmask' in address and f"{decomm_server}/32" == address['ip-netmask'] or 'ip-netmask' in address and f"{decomm_server}" == address['ip-netmask']:
+                if ('ip-netmask' in address and f"{decomm_server}/32" == address['ip-netmask']) or \
+                        ('ip-netmask' in address and f"{decomm_server}" == address['ip-netmask']):
 
                     self.logger.info(f"\nDeleting {address['@name']}...\n")
 
@@ -2129,11 +2241,9 @@ class PanOSAPI(_PanPaloShared):
                     self.logger.info(f"Deleted {address['@name']}")
                     del_response_objects.append(del_resp)
 
-                    found_obj = True
+                    # found_obj = True
 
         # if not found_obj:
         #     print("No addresses found!")
 
         return del_response_objects
-
-
