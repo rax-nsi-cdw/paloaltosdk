@@ -728,7 +728,7 @@ class PanoramaAPI(_PanPaloShared):
     #     but the response from API call is that the object is referenced in other places
     #     like rules or groups.
 
-    #     This will take the string of that gives where the references 
+    #     This will take the string of that gives where the references
     #  are located and converts it to a list
 
     #     This is needed because the references come back in one big string
@@ -783,7 +783,9 @@ class PanoramaAPI(_PanPaloShared):
                 if translation_type == 'static-ip':
                     # Unable to remove static ip as you cannot have none. Raising Exception
                     raise EmptySourceTranslationForRule(
-                        description="Unable to remove address object from rule due to it is the last object in rule. Please, delete the rule.",
+                        description=("Unable to remove address object from rule"
+                                     "due to it is the last object in rule. "
+                                     "Please, delete the rule."),
                         last_object=address_name,
 
                         rule_name=rule_name,
@@ -801,7 +803,9 @@ class PanoramaAPI(_PanPaloShared):
 
                 if len(rule[direction]['member']) == 0:
                     raise EmptyDirectionForRule(
-                        description="Unable to remove address object from rule due to it is the last object in rule. Please, delete the rule.",
+                        description=("Unable to remove address object from "
+                                     "rule due to it is the last object in rule. "
+                                     "Please, delete the rule."),
                         last_object=address_name,
 
                         rule_name=rule_name,
@@ -826,7 +830,9 @@ class PanoramaAPI(_PanPaloShared):
 
             if len(rule[direction]['member']) == 0:
                 raise EmptyDirectionForRule(
-                    description="Unable to remove address object from rule due to it is the last object in rule. Please, delete the rule.",
+                    description=("Unable to remove address object from rule "
+                                 "due to it is the last object in rule. "
+                                 "Please, delete the rule."),
                     last_object=address_name,
 
                     rule_name=rule_name,
@@ -845,8 +851,9 @@ class PanoramaAPI(_PanPaloShared):
 
             return resp.json()
 
-    def remove_addressgroup_from_rule(self, address_group, rule_name, rule_type, rulebase, device_group, direction, force=False):
-        if not type(rulebase) == str:
+    def remove_addressgroup_from_rule(self, address_group, rule_name, rule_type, rulebase,
+                                      device_group, direction, force=False):
+        if not type(rulebase) is str:
             raise ValueError("rulebase arg must be string.")
         if rulebase.lower() not in ['pre', 'post', 'default']:
             raise ValueError("rulebase arg must be 'pre' or 'post'")
@@ -861,7 +868,8 @@ class PanoramaAPI(_PanPaloShared):
 
         if len(rule[direction]['member']) == 0:
             raise EmptyDirectionForRule(
-                description="Unable to remove address object from rule due to it is the last rule. Please, delete the rule.",
+                description=("Unable to remove address object from rule "
+                             "due to it is the last rule. Please, delete the rule."),
                 last_object=address_group,
 
                 rule_name=rule_name,
@@ -869,7 +877,7 @@ class PanoramaAPI(_PanPaloShared):
                 rule_type=rule_type,
                 rulebase=rulebase,
 
-                device_group device_group,
+                device_group=device_group,
 
                 direction=direction)
 
@@ -892,10 +900,11 @@ class PanoramaAPI(_PanPaloShared):
 
             # resp = self.delete_address_group(address_group_name, device_group)
             raise EmptyAddressGroup(
-                description = f"Unable to remove address {address_name} due to it being the last object in the group. You must delete the group.",
-                address_group = address_group_name,
+                description=(f"Unable to remove address {address_name} due to it being the last "
+                             "object in the group. You must delete the group."),
+                address_group=address_group_name,
 
-                device_group = device_group
+                device_group=device_group
                 )
 
         address_group['static']['member'].remove(address_name)
@@ -912,7 +921,8 @@ class PanoramaAPI(_PanPaloShared):
     def delete_rule(self, rule_name, rule_type, rulebase, device_group):
 
         if device_group.lower() != "shared":
-            uri = f'Policies/{rule_type}{rulebase}Rules?location=device-group&device-group={device_group}&name={rule_name}'
+            uri = ('Policies/' + rule_type + rulebase + 'Rules?location=device-group&device-group='
+                   + device_group + '&name=' + rule_name)
         else:
             uri = f'Policies/{rule_type}{rulebase}Rules?location={device_group}&name={rule_name}'
 
@@ -925,32 +935,39 @@ class PanoramaAPI(_PanPaloShared):
         # NOTE: For some reason rule comes back as an array, removed arrary on return
 
         if device_group.lower() != "shared":
-            uri = f'Policies/{rule_type}{rulebase}Rules?location=device-group&device-group={device_group}&name={rule_name}'
+            uri = ('Policies/' + rule_type + rulebase + 'Rules?location=device-group&device-group='
+                   + device_group + '&name=' + rule_name)
         else:
             uri = f'Policies/{rule_type}{rulebase}Rules?location={device_group}&name={rule_name}'
 
         resp = self._get_req(self.rest_uri+uri)
 
-        if resp.ok and "@total-count" in resp.json()['result'] and int(resp.json()['result']['@total-count']) > 1:
-            raise Exception(f"Multiple rules detected for rule '{rule_name}' in Device Group '{device_group}'")
+        if resp.ok and "@total-count" in resp.json()['result'] and \
+                int(resp.json()['result']['@total-count']) > 1:
+            raise Exception(f"Multiple rules detected for rule '{rule_name}' "
+                            f"in Device Group '{device_group}'")
 
-        elif resp.ok and "@total-count" in resp.json()['result'] and resp.json()['result']['@total-count'] == "0":
-            return [] # empty
+        elif resp.ok and "@total-count" in resp.json()['result'] and \
+                resp.json()['result']['@total-count'] == "0":
+            return []  # empty
 
         elif resp.ok and 'entry' in resp.json()['result']:
             return resp.json()['result']['entry'][0]
 
         return resp.json()
 
-    def create_rule(self, name, rule_type, rulebase, device_group, source, destination, action, service="any", application="any", _from="any", _to="any" ):
-        if action not in ["deny","allow","drop","reset-client","reset-server","reset-both"]:
-            raise ValueError('"action" parameter must be one of the following: "deny" "allow" "drop" "reset-client" "reset-server" "reset-both"')
+    def create_rule(self, name, rule_type, rulebase, device_group, source, destination, action,
+                    service="any", application="any", _from="any", _to="any"):
+        if action not in ["deny", "allow", "drop", "reset-client", "reset-server", "reset-both"]:
+            raise ValueError('"action" parameter must be one of the following: "deny", "allow", '
+                             '"drop", "reset-client", "reset-server", "reset-both"')
 
         if rule_type.lower() != "security":
             raise ValueError("This method only supports Security rules at the moment")
 
         if device_group.lower() != "shared":
-            uri = f'Policies/{rule_type}{rulebase}Rules?location=device-group&device-group={device_group}&name={name}'
+            uri = (f'Policies/{rule_type}{rulebase}Rules?location='
+                   'device-group&device-group={device_group}&name={name}')
         else:
             uri = f'Policies/{rule_type}{rulebase}Rules?location={device_group}&name={name}'
 
@@ -986,7 +1003,7 @@ class PanoramaAPI(_PanPaloShared):
 
         if "rulebase -> security -> rules ->" in reference:
             direction = ""  # source or destination
-            rulebase = "" # pre, post, or default
+            rulebase = ""  # pre, post, or default
             rule_type = "Security"
 
             if "post-rulebase -> security -> rules ->" in reference:
@@ -1012,11 +1029,15 @@ class PanoramaAPI(_PanPaloShared):
 
                 direction = "source"
 
-            resp = self.remove_address_from_rule(address_name=object_name, rule_name=rule_name, rule_type=rule_type,
-
-                                             rulebase=rulebase, device_group=device_group, direction=direction)
+            resp = self.remove_address_from_rule(address_name=object_name,
+                                                 rule_name=rule_name,
+                                                 rule_type=rule_type,
+                                                 rulebase=rulebase,
+                                                 device_group=device_group,
+                                                 direction=direction)
             if '@status' in resp and resp['@status'] == "success":
-                self.logger.info(f"Removed address object_name from rule {rule_name} in DG {device_group}")
+                self.logger.info(f"Removed address {object_name} from rule {rule_name} "
+                                 f"in DG {device_group}")
 
             else:
                 raise Exception(f"Unable to delete object {object_name} \nRespone Obj: {resp}'")
@@ -1039,10 +1060,12 @@ class PanoramaAPI(_PanPaloShared):
 
             r = re.match(f"{rulebase}-rulebase -> nat -> rules -> (.*\.$)", reference)
 
-            # With NAT Rules you have source and destination and also translated source & translated destination.
+            # With NAT Rules you have source and destination
+            #  and also translated source & translated destination.
             # The next part of code determines which is referenced
 
-            if ' -> source-translation -> ' in r.group(1) or ' -> destination-translation -> ' in r.group(1):
+            if (' -> source-translation -> ' in r.group(1)) or \
+               (' -> destination-translation -> ' in r.group(1)):
 
                 rule_name_reg = re.search("(.*) -> source-translation -> ", r.group(1))
 
@@ -1134,7 +1157,12 @@ class PanoramaAPI(_PanPaloShared):
                     except EmptyDirectionForRule as e:
 
                         if force:
-                            resp = self.delete_rule(rule_name=e.rule_name, rule_type=e.rule_type, rulebase=e.rulebase, device_group=e.device_group)
+                            resp = self.delete_rule(
+                                rule_name=e.rule_name,
+                                rule_type=e.rule_type,
+                                rulebase=e.rulebase,
+                                device_group=e.device_group
+                            )
                             referenced_groups_deleted = referenced_groups_deleted + resp.referenced_groups_deleted if resp.referenced_groups_deleted else referenced_groups_deleted
                             referenced_rules_deleted = referenced_rules_deleted + resp.referenced_rules_deleted if resp.referenced_rules_deleted else referenced_rules_deleted
                             referenced_rules_deleted.append(e.rule_name)
@@ -1165,7 +1193,11 @@ class PanoramaAPI(_PanPaloShared):
 
             first_ref_has_not_been_deleted = False
 
-        return DeletionResponse(requests_resp=None, referenced_groups_deleted=referenced_groups_deleted, referenced_rules_deleted=referenced_rules_deleted)
+        return DeletionResponse(
+            requests_resp=None,
+            referenced_groups_deleted=referenced_groups_deleted,
+            referenced_rules_deleted=referenced_rules_deleted
+        )
 
     @staticmethod
     def find_lowest_available_number(numbers):
@@ -1182,7 +1214,7 @@ class PanoramaAPI(_PanPaloShared):
         ''' automatically finds the next lowest vsys id available to use,
             this is used with create_vsys method
             '''
-        if devices == None:
+        if devices is None:
             devices = self.get_devices()
         vsys_ids_used = []
 
