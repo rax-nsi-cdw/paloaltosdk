@@ -9,7 +9,8 @@ import xmltodict
 # import json
 import datetime
 
-from paloaltosdk.local_exceptions import *
+from paloaltosdk.local_exceptions import EmptySourceTranslationForRule
+from paloaltosdk.local_exceptions import EmptyDirectionForRule, EmptyAddressGroup
 from tqdm import tqdm
 
 warnings.filterwarnings("ignore")
@@ -86,7 +87,8 @@ class DeletionResponse:
 
         try:
             self.status_code = requests_resp.status_code
-        except:
+        except Exception as e:
+            self.logger.error(e)
             self.status_code = None
 
         def __str__(self):
@@ -147,7 +149,8 @@ class _PanPaloShared(PanRequests):
                 # even if watching, this verifies if there is indeed a job id.
                 # There won't be one if there is nothing to commit
                 return jobId
-        except:
+        except Exception as e:
+            self.logger.error(e)
             return None
 
             if watch:
@@ -176,7 +179,8 @@ class _PanPaloShared(PanRequests):
             # There won't be one if there is nothing to commit
             if not watch:  
                 return jobId
-        except:
+        except Exception as e:
+            self.logger.error(e)
             return None
 
         if watch:
@@ -311,7 +315,7 @@ class PanoramaAPI(_PanPaloShared):
 
     def config_xml_generic(self, xpath, serial=None, action="get"):
         '''Used to get configuration data'''
-        if serial != None:
+        if serial is not None:
             uri = f"?type=config&target={serial}&action=get&xpath={xpath}"
         else:
             uri = f"?type=config&action={action}&xpath={xpath}"
@@ -365,7 +369,8 @@ class PanoramaAPI(_PanPaloShared):
         if sn:
             try:
                 return self.get_vsys_max(sn) - self.get_current_used_vsys(sn)
-            except:
+            except Exception as e:
+                self.logger.error(e)
                 return None
 
     def get_vsys_tags(self, sn, vsys_name):
@@ -563,7 +568,7 @@ class PanoramaAPI(_PanPaloShared):
 
         elif resp.ok and "@total-count" in resp.json()['result'] and \
                 resp.json()['result']['@total-count'] == "0":
-            return [] # empty
+            return []  # empty
 
         elif resp.ok and 'entry' in resp.json()['result']:
             return resp.json()['result']['entry'][0]
@@ -655,7 +660,8 @@ class PanoramaAPI(_PanPaloShared):
             try:
                 raise Exception(f"Unable to delete object '{address_group}'. \n"
                                 f"Error: {resp2.json()}")
-            except:
+            except Exception as e:
+                self.logger.error(e)
                 raise Exception(f"Unable to delete object '{address_group}'.")
 
     def delete_address(self,
@@ -761,7 +767,7 @@ class PanoramaAPI(_PanPaloShared):
         '''
         '''
 
-        if not type(rulebase) == str:
+        if not type(rulebase) is str:
             raise ValueError("rulebase arg must be string.")
         if rulebase.lower() not in ['pre', 'post', 'default']:
             raise ValueError("rulebase arg must be 'pre' or 'post'")
@@ -824,7 +830,7 @@ class PanoramaAPI(_PanPaloShared):
                 return resp.json()
 
         elif rule_type.lower() == 'security':
-        # Security Rule Logic
+            # Security Rule Logic
 
             rule[direction]['member'].remove(address_name)
 
@@ -859,7 +865,8 @@ class PanoramaAPI(_PanPaloShared):
             raise ValueError("rulebase arg must be 'pre' or 'post'")
 
         if device_group.lower() != "shared":
-            uri = f'Policies/{rule_type}{rulebase}Rules?location=device-group&device-group={device_group}&name={rule_name}'
+            uri = ('Policies/' + rule_type + rulebase + 'Rules?location=device-group&device-group='
+                   + device_group + '&name=' + rule_name)
         else:
             uri = f'Policies/{rule_type}{rulebase}Rules?location={device_group}&name={rule_name}'
 
@@ -890,7 +897,8 @@ class PanoramaAPI(_PanPaloShared):
     def remove_address_from_addressgroup(self, address_name, address_group_name, device_group):
 
         if device_group.lower() != "shared":
-            uri = f'Objects/AddressGroups?location=device-group&device-group={device_group}&name={address_group_name}'
+            uri = ('Objects/AddressGroups?location=device-group&device-group='
+                   + f'{device_group}&name={address_group_name}')
         else:
             uri = f'Objects/AddressGroups?location={device_group}&name={address_group_name}'
 
@@ -1043,8 +1051,8 @@ class PanoramaAPI(_PanPaloShared):
                 raise Exception(f"Unable to delete object {object_name} \nRespone Obj: {resp}'")
 
         elif "rulebase -> nat -> rules ->" in reference:
-            direction = "" # source or destination
-            rulebase = "" # pre, post, or default
+            direction = ""  # source or destination
+            rulebase = ""  # pre, post, or default
             rule_type = "NAT"
             translation_direction = None
             translation_type = None
@@ -1318,7 +1326,7 @@ class PanoramaAPI(_PanPaloShared):
         #                         found_active_peer = True
         #                         serial = device['@name']
 
-        ## WRITE LOGIC TO FIND OUT IF DEVICE IS ACTIVE OR PASSIVE
+        # TODO: WRITE LOGIC TO FIND OUT IF DEVICE IS ACTIVE OR PASSIVE
 
         ''' Payload could also containt colors and comments:
                                     <tag>
@@ -1328,16 +1336,17 @@ class PanoramaAPI(_PanPaloShared):
                                     </tag>
         '''
         if tag_name:
-            payload = f'''
-                        <entry name="vsys{vsys_id}">
-                            <display-name>{vsys_name}</display-name>
-                            <tag>
-                                <entry name="{tag_name}"></entry>
-                                <entry name="RESDATE:{self.today}"></entry>
-
-                            </tag>
-                        </entry>
-                        '''
+            payload = (
+                f'''
+                <entry name="vsys{vsys_id}">
+                    <display-name>{vsys_name}</display-name>
+                    <tag>
+                        <entry name="{tag_name}"></entry>
+                        <entry name="RESDATE:{self.today}"></entry>
+                    </tag>
+                </entry>
+                '''
+            )
         else:
             payload = f'''
                         <entry name="vsys{vsys_id}">
@@ -1371,7 +1380,8 @@ class PanoramaAPI(_PanPaloShared):
 
         if vsys_id:
             uri = (f"?type=config&target={serial}&action=delete"
-                   f"&xpath=/config/devices/entry/vsys/entry[@name='vsys{vsys_id}']")
+                   f"&xpath=/config/devices/entry/vsys/entry[@name='vsys{vsys_id}']"
+                   )
         elif vsys_name:
             uri = (f"?type=config&target={serial}&action=delete"
                    f"&xpath=/config/devices/entry/vsys/entry[@name='{vsys_name}']")
@@ -1412,8 +1422,11 @@ class PanoramaAPI(_PanPaloShared):
                         # in a device group but shared into another, only need to delete 1 time
                         if '@loc' in address and address['@loc'] != address['@device-group']:
                             continue
-                        elif '@loc' in address and address['@loc'] == address['@device-group'] or '@loc' not in address and '@device-group' in address or '@location' in address and address['@location'] == "shared":
-                            self.logger.info(f"\nDeleting {address['@name']} from {dg['@name']}...\n")
+                        elif '@loc' in address and address['@loc'] == address['@device-group'] or \
+                             '@loc' not in address and '@device-group' in address or \
+                             '@location' in address and address['@location'] == "shared":
+                            self.logger.info((f"\nDeleting {address['@name']}"
+                                              f" from {dg['@name']}...\n"))
                             del_resp = self.delete_address(address['@name'], dg['@name'], force=True)
 
                             self.logger.info(f"Deleted {address['@name']} from {dg['@name']}...\n\n")
@@ -1421,12 +1434,15 @@ class PanoramaAPI(_PanPaloShared):
                             found_obj = True
 
                         else:
-                            raise Exception(f"Unable to remove address {address['@name']} in Device Group {dg['@name']}. \nRef")
+                            raise Exception((f"Unable to remove address {address['@name']} "
+                                             f"in Device Group {dg['@name']}. \nRef"))
 
             if not found_obj:
-                self.logger.info("No addresses found!") # FIXME: should probably raise to make pipeline fail? Will decide later
+                self.logger.info("No addresses found!")  # FIXME:
+                # should probably raise to make pipeline fail? Will decide later
 
             return del_response_objects
+
 
 class PanOSAPI(_PanPaloShared):
 
@@ -1447,10 +1463,12 @@ class PanOSAPI(_PanPaloShared):
     @staticmethod
     def _convert_reference_response_to_list(references_string):
         """
-        This is used when trying to delete an object, but the response from API call is that the object is referenced in other places
+        This is used when trying to delete an object, but the response from
+        API call is that the object is referenced in other places
         like rules or groups.
 
-        This will take the string of that gives where the references are located and converts it to a list
+        This will take the string of that gives where the
+        references are located and converts it to a list
 
         This is needed because the references come back in one big string
         """
@@ -1459,13 +1477,13 @@ class PanOSAPI(_PanPaloShared):
             raise ValueError("Did not pass a string that is a Palo Alto reference as an argument")
 
         references = []
-        _shared = None
+        # _shared = None
         references_string_split = re.split(r'(?<=\.  )', references_string)
 
         if references_string_split:
 
             for i in references_string_split:
-                if not "cannot be deleted because of references from:" in i:
+                if "cannot be deleted because of references from:" not in i:
                     ref = {}
                     ref['reference'] = i
                     references.append(ref)
@@ -1504,17 +1522,20 @@ class PanOSAPI(_PanPaloShared):
 
         if resp.ok and 'entry' in resp.json()['result']:
             return resp.json()['result']['entry']
-        elif resp.ok and "@total-count" in resp.json()['result'] and resp.json()['result']['@total-count'] == "0":
-            return [] # empty
+        elif (resp.ok and
+              "@total-count" in resp.json()['result'] and 
+              resp.json()['result']['@total-count'] == "0"):
+            return []  # empty
         return resp
 
     def get_tags(self, location: str = None):
-        uri = f'objects/tags'
+        uri = 'objects/tags'
         resp = self._get_req(self.rest_uri+uri)
         if resp.ok and 'entry' in resp.json()['result']:
             return resp.json()['result']['entry']
-        elif resp.ok and "@total-count" in resp.json()['result'] and resp.json()['result']['@total-count'] == "0":
-            return [] # empty
+        elif resp.ok and "@total-count" in resp.json()['result'] and \
+                resp.json()['result']['@total-count'] == "0":
+            return []  # empty
         return resp
 
     def create_address(self, name, ip_netmask, description="", location="vsys"):
@@ -1538,16 +1559,23 @@ class PanOSAPI(_PanPaloShared):
     def get_addressgroup(self, address_group, location="vsys"):
 
         if location == "vsys":
-            uri = f'Objects/AddressGroups?location={location}&{location}={self.vsys}&name={address_group}'
+            uri = (
+                f'Objects/AddressGroups?location={location}&{location}={self.vsys}'
+                f'&name={address_group}'
+            )
         else:
             uri = f'Objects/AddressGroups?location={location}&name={address_group}'
 
         resp = self._get_req(self.rest_uri+uri)
 
-        if resp.ok and "@total-count" in resp.json()['result'] and int(resp.json()['result']['@total-count']) > 1:
+        if (resp.ok and
+            "@total-count" in resp.json()['result'] and
+                int(resp.json()['result']['@total-count']) > 1):
             raise Exception(f"Multiple address groups detected for address group '{address_group}'")
 
-        elif resp.ok and "@total-count" in resp.json()['result'] and resp.json()['result']['@total-count'] == "0":
+        elif (resp.ok and
+              "@total-count" in resp.json()['result'] and 
+              resp.json()['result']['@total-count'] == "0"):
             return [] # empty
 
         elif resp.ok and 'entry' in resp.json()['result']:
@@ -1572,14 +1600,21 @@ class PanOSAPI(_PanPaloShared):
 
         return resp.json()
 
-    def delete_address_group(self, address_group, location="vsys", force=False, force_deletion_of_all_objects_referenced=None):
+    def delete_address_group(self,
+                             address_group,
+                             location="vsys",
+                             force=False,
+                             force_deletion_of_all_objects_referenced=None):
 
         '''
         params;
-        force: This will remove direct references (delete the reference if it is last object in references)
-        force_deletion_of_all_objects_referenced: This will do the same as force AND will remove references of references, etc.
+        force: This will remove direct references 
+        (delete the reference if it is last object in references)
+        force_deletion_of_all_objects_referenced: This will do the same as force
+        AND will remove references of references, etc.
 
-        !!!!! WARNING: setting force will ALSO set force_deletion_of_all_objects_referenced to same value. To have different values, set them both manually !!!!!
+        !!!!! WARNING: setting force will ALSO set force_deletion_of_all_objects_referenced
+        to same value. To have different values, set them both manually !!!!!
         '''
 
         if not isinstance(force, bool):
@@ -1596,14 +1631,23 @@ class PanOSAPI(_PanPaloShared):
         resp = self._del_req(self.rest_uri+uri)
 
         if not force:
-            return DeletionResponse(requests_resp=resp, referenced_groups_deleted=None, referenced_rules_deleted=None, object=address_group)
+            return DeletionResponse(requests_resp=resp,
+                                    referenced_groups_deleted=None,
+                                    referenced_rules_deleted=None,
+                                    object=address_group)
 
         if "@status" in resp.json().keys() and resp.json()['@status'] == 'success':
-            return DeletionResponse(requests_resp=resp, referenced_groups_deleted=None, referenced_rules_deleted=None, object=address_group)
+            return DeletionResponse(requests_resp=resp,
+                                    referenced_groups_deleted=None,
+                                    referenced_rules_deleted=None,
+                                    object=address_group)
 
-          # If object can't be deleted because of references, this will delete refs if force switch == True
+            # If object can't be deleted because of references,
+            # this will delete refs if force switch == True
 
-        reference_remove_resp = self._filter_and_remove_obj_references(resp.json(), address_group, force=force)
+        reference_remove_resp = self._filter_and_remove_obj_references(resp.json(),
+                                                                       address_group,
+                                                                       force=force)
 
         # self._delete_refs_of_refs(resp.json())
 
@@ -1612,7 +1656,10 @@ class PanOSAPI(_PanPaloShared):
 
         if "@status" in resp2.json() and resp2.json()['@status'] == 'success':
             self.logger.info(f"Deleted address group object {address_group}")
-            return DeletionResponse(requests_resp=resp2, referenced_groups_deleted=reference_remove_resp.referenced_groups_deleted, referenced_rules_deleted=reference_remove_resp.referenced_rules_deleted, object=address_group)
+            return DeletionResponse(requests_resp=resp2,
+                                    referenced_groups_deleted=reference_remove_resp.referenced_groups_deleted,
+                                    referenced_rules_deleted=reference_remove_resp.referenced_rules_deleted,
+                                    object=address_group)
 
         else:
             try:
@@ -1620,18 +1667,26 @@ class PanOSAPI(_PanPaloShared):
             except:
                 raise Exception(f"Unable to delete object '{address_group}'.")
 
-    def delete_address(self, address_name, location="vsys", force=False, force_deletion_of_all_objects_referenced=None):
+    def delete_address(self,
+                       address_name,
+                       location="vsys",
+                       force=False,
+                       force_deletion_of_all_objects_referenced=None):
         '''
         params;
-        force: This will remove direct references (delete the reference if it is last object in references)
-        force_deletion_of_all_objects_referenced: This will do the same as force AND will remove references of references, etc.
+        force: This will remove direct references
+        (delete the reference if it is last object in references)
+        force_deletion_of_all_objects_referenced:
+        This will do the same as force AND will remove references of references, etc.
 
-        !!!!! WARNING: setting force will ALSO set force_deletion_of_all_objects_referenced to same value. To have different values, set them both manually !!!!!
+        !!!!! WARNING: setting force will ALSO set 
+        force_deletion_of_all_objects_referenced to same value.
+        To have different values, set them both manually !!!!!
         '''
         if not isinstance(force, bool):
             raise ValueError("force must be a boolean")
 
-        if force_deletion_of_all_objects_referenced == None:
+        if force_deletion_of_all_objects_referenced is None:
             force_deletion_of_all_objects_referenced = force
 
         if location == "vsys":
@@ -1642,11 +1697,17 @@ class PanOSAPI(_PanPaloShared):
         resp = self._del_req(self.rest_uri+uri)
 
         if not force:
-            return DeletionResponse(requests_resp=resp, referenced_groups_deleted=None, referenced_rules_deleted=None, object=address_name)
+            return DeletionResponse(requests_resp=resp,
+                                    referenced_groups_deleted=None,
+                                    referenced_rules_deleted=None,
+                                    object=address_name)
             # return resp.json()
 
         if "@status" in resp.json() and resp.json()['@status'] == 'success':
-            return DeletionResponse(requests_resp=resp, referenced_groups_deleted=None, referenced_rules_deleted=None, object=address_name)
+            return DeletionResponse(requests_resp=resp,
+                                    referenced_groups_deleted=None,
+                                    referenced_rules_deleted=None,
+                                    object=address_name)
 
         # If object can't be deleted because of references, this will delete refs if force switch == True
 
