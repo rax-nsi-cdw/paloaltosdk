@@ -1082,16 +1082,20 @@ class PanoramaAPI(_PanPaloShared):
 
                     translation_direction = "source-translation"
 
-                translation_type_reg = re.search(f" -> {translation_direction} -> ((.*) -> )", r.group(1))
+                translation_type_reg = re.search(
+                    f" -> {translation_direction} -> ((.*) -> )",
+                    r.group(1)
+                )
                 if not translation_type_reg:
-                    raise Exception(f"Unable to determine translation type (ex. static, dynamic, etc.) for reference {reference}")
+                    raise Exception("Unable to determine translation type "
+                                    f"(ex. static, dynamic, etc.) for reference {reference}")
                 translation_type = translation_type_reg.group(2)
 
             else:
                 r = re.match(f"{rulebase}-rulebase -> nat -> rules -> (.*\.$)", reference)
-                rule_name_reg = re.search("(.*) -> source\.", r.group(1))
+                rule_name_reg = re.search("(.*) -> source\\.", r.group(1))
                 if not rule_name_reg:
-                    rule_name_reg = re.search("(.*) -> destination\.", r.group(1))
+                    rule_name_reg = re.search("(.*) -> destination\\.", r.group(1))
                     if not rule_name_reg:
                         raise Exception(f"Unable to determine rule_name for reference {reference}")
                     else:
@@ -1103,16 +1107,25 @@ class PanoramaAPI(_PanPaloShared):
                     direction = "source"
 
             if translation_direction and translation_type:
-                resp = self.remove_address_from_rule(address_name=object_name, rule_name=rule_name, rule_type=rule_type,
-
-                                            rulebase=rulebase, device_group=device_group, direction=direction, translation_type=translation_type, translation_direction=translation_direction)
+                resp = self.remove_address_from_rule(address_name=object_name,
+                                                     rule_name=rule_name,
+                                                     rule_type=rule_type,
+                                                     rulebase=rulebase,
+                                                     device_group=device_group,
+                                                     direction=direction,
+                                                     translation_type=translation_type,
+                                                     translation_direction=translation_direction)
             else:
-                resp = self.remove_address_from_rule(address_name=object_name, rule_name=rule_name, rule_type=rule_type,
-
-                                            rulebase=rulebase, device_group=device_group, direction=direction)
+                resp = self.remove_address_from_rule(address_name=object_name,
+                                                     rule_name=rule_name,
+                                                     rule_type=rule_type,
+                                                     rulebase=rulebase,
+                                                     device_group=device_group,
+                                                     direction=direction)
 
             if '@status' in resp and resp['@status'] == "success":
-                self.logger.info(f"Removed address object_name from rule {rule_name} in DG {device_group}")
+                self.logger.info(f"Removed address {object_name} from rule {rule_name} "
+                                 f"in DG {device_group}")
 
             else:
                 raise Exception(f"Unable to delete object {object_name} \nRespone Obj: {resp}'")
@@ -1126,9 +1139,12 @@ class PanoramaAPI(_PanPaloShared):
                 self.logger.info(f"Removed address {object_name} from address group {address_group}")
 
         else:
-            raise Exception(f"Unable to delete object {object_name} \nReferenced object type not supported for deletion:  {reference}'")
+            raise Exception(f"Unable to delete object {object_name} \n"
+                            f"Referenced object type not supported for deletion:  {reference}'")
 
-    def _filter_and_remove_obj_references(self, json_resp_from_failure_to_remove_delete_item, obj_name, device_group, force=False):
+    def _filter_and_remove_obj_references(self,
+                                          json_resp_from_failure_to_remove_delete_item,
+                                          obj_name, device_group, force=False):
 
         referenced_groups_deleted = []
         referenced_rules_deleted = []
@@ -1140,19 +1156,24 @@ class PanoramaAPI(_PanPaloShared):
 
             resp = json_resp_from_failure_to_remove_delete_item
             if resp['message'].lower() == "reference not zero" and "details" in resp:
-                self.logger.info(f"Found References for object {obj_name}. Remove object from References...")
+                self.logger.info(f"Found References for object {obj_name}. "
+                                 "Remove object from References...")
 
                 for detail in resp['details']:
                     if "@type" in detail and detail['@type'].lower() == "causeinfo":
                         for cause in detail['causes']:
-                            if f"{obj_name} cannot be deleted because of references from:" in cause["description"]:
-                                references = self._convert_reference_response_to_list(cause["description"])
+                            if (f"{obj_name} cannot be deleted because of ""references from:") \
+                                  in cause["description"]:
+                                references = self._convert_reference_response_to_list(
+                                             cause["description"])
                 self.logger.info(f"References:  {references}")
 
                 for reference in references:
                     try:
 
-                        self.remove_reference_from_object(reference['reference'], object_name=obj_name, device_group=reference["device-group"])
+                        self.remove_reference_from_object(reference['reference'],
+                                                          object_name=obj_name,
+                                                          device_group=reference["device-group"])
 
                     except EmptyDirectionForRule as e:
 
@@ -1163,8 +1184,16 @@ class PanoramaAPI(_PanPaloShared):
                                 rulebase=e.rulebase,
                                 device_group=e.device_group
                             )
-                            referenced_groups_deleted = referenced_groups_deleted + resp.referenced_groups_deleted if resp.referenced_groups_deleted else referenced_groups_deleted
-                            referenced_rules_deleted = referenced_rules_deleted + resp.referenced_rules_deleted if resp.referenced_rules_deleted else referenced_rules_deleted
+                            referenced_groups_deleted = (
+                                referenced_groups_deleted + resp.referenced_groups_deleted
+                                if resp.referenced_groups_deleted
+                                else referenced_groups_deleted
+                            )
+                            referenced_rules_deleted = (
+                                referenced_rules_deleted + resp.referenced_rules_deleted
+                                if resp.referenced_rules_deleted
+                                else referenced_rules_deleted
+                            )
                             referenced_rules_deleted.append(e.rule_name)
                             self.logger.info(f"Deleted reference: Rule {e.rule_name}")
                         else:
@@ -1172,9 +1201,21 @@ class PanoramaAPI(_PanPaloShared):
 
                     except EmptyAddressGroup as e:
                         if force:
-                            resp = self.delete_address_group(address_group=e.address_group, device_group=e.device_group, force=force)
-                            referenced_groups_deleted = referenced_groups_deleted + resp.referenced_groups_deleted if resp.referenced_groups_deleted else referenced_groups_deleted
-                            referenced_rules_deleted = referenced_rules_deleted + resp.referenced_rules_deleted if resp.referenced_rules_deleted else referenced_rules_deleted
+                            resp = self.delete_address_group(
+                                address_group=e.address_group,
+                                device_group=e.device_group,
+                                force=force
+                            )
+                            referenced_groups_deleted = (
+                                referenced_groups_deleted + resp.referenced_groups_deleted
+                                if resp.referenced_groups_deleted
+                                else referenced_groups_deleted
+                            )
+                            referenced_rules_deleted = (
+                                referenced_rules_deleted + resp.referenced_rules_deleted
+                                if resp.referenced_rules_deleted
+                                else referenced_rules_deleted
+                            )
                             referenced_groups_deleted.append(e.address_group)
                             self.logger.info(f"Deleted reference: Address Group {e.address_group}")
                         else:
@@ -1183,9 +1224,22 @@ class PanoramaAPI(_PanPaloShared):
                     except EmptySourceTranslationForRule as e:
 
                         if force:
-                            resp = self.delete_rule(rule_name=e.rule_name, rule_type=e.rule_type, rulebase=e.rulebase, device_group=e.device_group)
-                            referenced_groups_deleted = referenced_groups_deleted + resp.referenced_groups_deleted if resp.referenced_groups_deleted else referenced_groups_deleted
-                            referenced_rules_deleted = referenced_rules_deleted + resp.referenced_rules_deleted if resp.referenced_rules_deleted else referenced_rules_deleted
+                            resp = self.delete_rule(
+                                rule_name=e.rule_name,
+                                rule_type=e.rule_type,
+                                rulebase=e.rulebase,
+                                device_group=e.device_group
+                            )
+                            referenced_groups_deleted = (
+                                referenced_groups_deleted + resp.referenced_groups_deleted
+                                if resp.referenced_groups_deleted
+                                else referenced_groups_deleted
+                            )
+                            referenced_rules_deleted = (
+                                referenced_rules_deleted + resp.referenced_rules_deleted
+                                if resp.referenced_rules_deleted
+                                else referenced_rules_deleted
+                            )
                             referenced_rules_deleted.append(e.rule_name)
                             self.logger.info(f"Deleted reference: Rule {e.rule_name}")
                         else:
@@ -1227,12 +1281,17 @@ class PanoramaAPI(_PanPaloShared):
 
         return PanoramaAPI.find_lowest_available_number(vsys_ids_used)
 
-    def create_vsys(self, vsys_name:str, vsys_id:str, serial:int, tag_name:str=None, make_changes_on_active_ha_peer:bool=False):
+    def create_vsys(self, vsys_name: str,
+                    vsys_id: str,
+                    serial: int,
+                    tag_name: str = None,
+                    make_changes_on_active_ha_peer: bool = False):
 
         '''
         set vsys_id to 'auto' to automatically find the next available vsys id
 
-        make_changes_on_active_ha_peer; will verify sn is an active peer if HA, else will create vsys on active peer
+        make_changes_on_active_ha_peer; will verify sn is an active peer if HA,
+        else will create vsys on active peer
 
         '''
 
@@ -1288,7 +1347,8 @@ class PanoramaAPI(_PanPaloShared):
                         '''
         # FIXME: add date created
 
-        uri = f'?type=config&target={serial}&action=set&xpath=/config/devices/entry/vsys&element={payload}'
+        uri = (f'?type=config&target={serial}&action=set'
+               f'&xpath=/config/devices/entry/vsys&element={payload}')
         try:
             resp = self._get_req(self.xml_uri+uri)
             resp.raise_for_status()
@@ -1304,24 +1364,29 @@ class PanoramaAPI(_PanPaloShared):
     def delete_vsys(self, serial: int, vsys_name: str = None, vsys_id: int = None, ):
 
         '''
-        Deletes vysys. Requires serial and either vsys_name or vsys_id to be passed. If both are passed, vsys_id will be used.
+        Deletes vysys. Requires serial and either vsys_name or
+        vsys_id to be passed. If both are passed, vsys_id will be used.
 
         '''
 
         if vsys_id:
-            uri = f"?type=config&target={serial}&action=delete&xpath=/config/devices/entry/vsys/entry[@name='vsys{vsys_id}']"
+            uri = (f"?type=config&target={serial}&action=delete"
+                   f"&xpath=/config/devices/entry/vsys/entry[@name='vsys{vsys_id}']")
         elif vsys_name:
-            uri = f"?type=config&target={serial}&action=delete&xpath=/config/devices/entry/vsys/entry[@name='{vsys_name}']"
+            uri = (f"?type=config&target={serial}&action=delete"
+                   f"&xpath=/config/devices/entry/vsys/entry[@name='{vsys_name}']")
         else:
             raise ValueError("Must pass either vsys_name or vsys_id to delete vsys")
 
         resp = self._post_req(self.xml_uri+uri)
-        self.logger.info(f"Deleted vsys {vsys_name} on device {serial} with response: {self.xml_to_json(resp)['response']}")
+        self.logger.info(f"Deleted vsys {vsys_name} on device {serial} "
+                         f"with response: {self.xml_to_json(resp)['response']}")
+
         return self.xml_to_json(resp)['response']
 
     def decommission_server(self, servers_to_decommission):
 
-        address_objects_to_delete = []
+        # address_objects_to_delete = []
         found_obj = False
         del_response_objects = []
 
@@ -1330,7 +1395,8 @@ class PanoramaAPI(_PanPaloShared):
 
         device_groups = self.get_devicegroups(include_shared=True)
 
-        if type(device_groups) == dict and 'message' in device_groups.keys() and 'invalid cred' in device_groups['message'].lower():
+        if type(device_groups) is dict and 'message' in device_groups.keys() and \
+                                           'invalid cred' in device_groups['message'].lower():
             raise Exception("Invalid credentials for Panorama")
 
         for decomm_server in servers_to_decommission:
@@ -1339,8 +1405,11 @@ class PanoramaAPI(_PanPaloShared):
                 # query all addresses and loop through to find all addresses
                 addresses = self.get_addresses(dg['@name'])
                 for address in addresses:
-                    if 'ip-netmask' in address and f"{decomm_server}/32" == address['ip-netmask'] or 'ip-netmask' in address and f"{decomm_server}" == address['ip-netmask']:
-                        # The following logic is to detect duplicate findings from an address being in a device group but shared into another, only need to delete 1 time
+                    if ('ip-netmask' in address and
+                        f"{decomm_server}/32" == address['ip-netmask']) or \
+                       ('ip-netmask' in address and f"{decomm_server}" == address['ip-netmask']):
+                        # The following logic is to detect duplicate findings from an address being
+                        # in a device group but shared into another, only need to delete 1 time
                         if '@loc' in address and address['@loc'] != address['@device-group']:
                             continue
                         elif '@loc' in address and address['@loc'] == address['@device-group'] or '@loc' not in address and '@device-group' in address or '@location' in address and address['@location'] == "shared":
