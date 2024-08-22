@@ -470,7 +470,9 @@ class PanoramaAPI(_PanPaloShared):
                         raise Exception("Unable to determine hostname for HA Peers")
                     combined_hostname = f"{higher_hostname}_{lower_hostname}"
                     ha_combined_vsys_data = {"serial": combined_serial,
-                                             "hostname": combined_hostname
+                                             "hostname": combined_hostname,
+                                             "lower_serial": lower_serial,
+                                             "higher_serial": higher_serial,
                                              }
                     if (
                         device['vsys_max'] == ha_peer_data['vsys_max'] and
