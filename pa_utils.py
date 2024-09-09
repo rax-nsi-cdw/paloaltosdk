@@ -301,12 +301,20 @@ class PanoramaAPI(_PanPaloShared):
         return responseXml.find('result').find('sw-version').text
         # return {"status": responseXml.find('result').find('job').find('status').text,
 
-    def get_devices(self):
+    def get_devices(self, device_list=None):
+        if device_list:
+            device_subset = []
+            for device in device_list:
+                uri = '?type=op&cmd=<show><devices><devices><entry name="026701009351"></devices></show>'
+                # f"&xpath=/config/devices/entry[@name='{device}']")
+                resp = self._get_req(self.xml_uri+uri)
+                device_subset.append(self.xml_to_json(resp)['response']['result']['devices']['entry'])
+            return device_subset
+        else:
+            uri = '?type=op&cmd=<show><devices><all></all></devices></show>'
+            resp = self._get_req(self.xml_uri+uri)
+            return self.xml_to_json(resp)['response']['result']['devices']['entry']
 
-        uri = '?type=op&cmd=<show><devices><all></all></devices></show>'
-
-        resp = self._get_req(self.xml_uri+uri)
-        return self.xml_to_json(resp)['response']['result']['devices']['entry']
 
     def get_sys_info(self, sn):
         uri = f'?type=op&cmd=<show><system><info></info></system></show>&target={sn}'
@@ -499,9 +507,11 @@ class PanoramaAPI(_PanPaloShared):
             return device_vsys_combined_ha
         return devices_vsys
 
-    def get_devicegroups(self, include_shared=False):
-
-        uri = 'Panorama/DeviceGroups'
+    def get_devicegroups(self, device_group=None, include_shared=False):
+        if device_group:
+            uri = f'Panorama/DeviceGroups?name={device_group}'
+        else:
+            uri = 'Panorama/DeviceGroups'
 
         resp = self._get_req(self.rest_uri+uri)
         if resp.ok and 'entry' in resp.json()['result']:
@@ -515,6 +525,21 @@ class PanoramaAPI(_PanPaloShared):
                           resp.json()['result']['@total-count'] == "0"):
             return []  # empty
         return resp.json()
+
+    def get_devicegroup_members(self, device_group):  #ToDO response is device type=array fix
+        # returns a list device dictionaries. @name is the serial number
+        uri = ("?type=config&action=show"
+               "&xpath=/config/devices/entry[@name='localhost.localdomain']"
+               f"/device-group/entry[@name='{device_group}']")
+        resp = self._get_req(self.xml_uri+uri)
+        if resp.ok:
+            json_resp = self.xml_to_json(resp)
+            if 'devices' in json_resp['response']['result']['entry'] and '@type' not in json_resp['response']['result']['entry']['devices']:
+                return json_resp['response']['result']['entry']['devices']['entry']
+            elif 'devicetype' in json_resp['response']['result']['entry']:
+                return None
+        else:
+            print(resp.content)
 
     def get_addresses(self, device_group):
 
