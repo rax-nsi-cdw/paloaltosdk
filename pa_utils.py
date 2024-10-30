@@ -534,8 +534,9 @@ class PanoramaAPI(_PanPaloShared):
         resp = self._get_req(self.xml_uri+uri)
         if resp.ok:
             json_resp = self.xml_to_json(resp)
-            if 'devices' in json_resp['response']['result']['entry'] and '@type' not in json_resp['response']['result']['entry']['devices']:
-                return json_resp['response']['result']['entry']['devices']['entry']
+            if json_resp['response']['result']['entry']['devices'] is not None:
+                if 'devices' in json_resp['response']['result']['entry'] and '@type' not in json_resp['response']['result']['entry']['devices']:
+                    return json_resp['response']['result']['entry']['devices']['entry']
             elif 'devicetype' in json_resp['response']['result']['entry']:
                 return None
         else:
