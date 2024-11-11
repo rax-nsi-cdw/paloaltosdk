@@ -414,7 +414,13 @@ class PanoramaAPI(_PanPaloShared):
                              'vsys_max': vsys_max,
                              "ha_peer": device['ha']['peer']['serial'] if 'ha' in device else None}
                 vsys_in_use = []
+                if type(device['vsys']['entry']) is not list:
+                    # if entry is not a list, then there is only one vsys
+                    vsys_in_use.append({'@name': device['vsys']['entry']['@name'],
+                                        "display-name": device['vsys']['entry']['display-name']})
+                    continue
                 for vsys in device['vsys']['entry']:
+                    print(vsys)
                     # Show devices doesn't have detailed vsys info (tags). Optionally retrieve tags
                     if get_tags:
                         tags = self.get_vsys_tags(device['serial'], vsys['@name'])
