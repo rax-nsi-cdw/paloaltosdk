@@ -418,7 +418,12 @@ class PanoramaAPI(_PanPaloShared):
                     # if entry is not a list, then there is only one vsys
                     vsys_in_use.append({'@name': device['vsys']['entry']['@name'],
                                         "display-name": device['vsys']['entry']['display-name']})
+                    vsys_data['vsys_in_use'] = vsys_in_use
+                    vsys_data['vsys_used'] = len(vsys_in_use)
+                    devices_vsys.append(vsys_data)
+                    # Continue to next device
                     continue
+                # if entry is a list, then there are multiple vsys
                 for vsys in device['vsys']['entry']:
                     print(vsys)
                     # Show devices doesn't have detailed vsys info (tags). Optionally retrieve tags
