@@ -425,7 +425,6 @@ class PanoramaAPI(_PanPaloShared):
                     continue
                 # if entry is a list, then there are multiple vsys
                 for vsys in device['vsys']['entry']:
-                    print(vsys)
                     # Show devices doesn't have detailed vsys info (tags). Optionally retrieve tags
                     if get_tags:
                         tags = self.get_vsys_tags(device['serial'], vsys['@name'])
