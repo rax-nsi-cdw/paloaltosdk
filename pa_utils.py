@@ -88,7 +88,7 @@ class DeletionResponse:
         try:
             self.status_code = requests_resp.status_code
         except Exception as e:
-            self.logger.error(e)
+            #self.logger.error(e)
             self.status_code = None
 
         def __str__(self):

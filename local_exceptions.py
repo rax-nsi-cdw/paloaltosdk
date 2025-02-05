@@ -4,10 +4,11 @@ class EmptyAddressGroup(Exception):
 
     This Exception is for when trying to delete an address object from an address group but it is the last address object. This cannot be done as
     Panorama requires an address object in a group. Must delete the group entirely."""
-    def __init__(self, description, address_group=None, device_group=None):
+    def __init__(self, description, address_group=None, device_group=None, location=None):
         super().__init__(description)
         self.address_group = address_group
         self.device_group = device_group
+        self.location = location
   
 
 
@@ -22,7 +23,7 @@ class EmptyDirectionForRule(Exception):
     
     
     def __init__(self, description, last_object=None, rule_name=None, rule_type=None, rulebase=None, 
-                 direction=None, device_group=None ):
+                 direction=None, device_group=None, location=None ):
         super().__init__(description)
         self.last_object = last_object
         self.rule_name = rule_name
@@ -30,6 +31,7 @@ class EmptyDirectionForRule(Exception):
         self.rulebase = rulebase
         self.direction = direction
         self.device_group = device_group
+        self.location = location
 
 class EmptySourceTranslationForRule(Exception):
     """
@@ -40,7 +42,7 @@ class EmptySourceTranslationForRule(Exception):
     
     
     def __init__(self, description, last_object=None, rule_name=None, rule_type=None, rulebase=None, 
-                 direction=None, device_group=None, translation_type=None, translation_direction=None):
+                 direction=None, device_group=None, translation_type=None, translation_direction=None, location=None):
         super().__init__(description)
         self.last_object = last_object
         self.rule_name = rule_name
@@ -50,3 +52,4 @@ class EmptySourceTranslationForRule(Exception):
         self.device_group = device_group
         self.translation_type = translation_type
         self.translation_direction = translation_direction
+        self.location = location
