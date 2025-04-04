@@ -88,7 +88,7 @@ class DeletionResponse:
         try:
             self.status_code = requests_resp.status_code
         except Exception as e:
-            #self.logger.error(e)
+            self.logger.error(e)
             self.status_code = None
 
         def __str__(self):
@@ -412,7 +412,7 @@ class PanoramaAPI(_PanPaloShared):
                              'serial': device['serial'],
                              'vsys_free': vsys_free,
                              'vsys_max': vsys_max,
-                             "ha_peer": device['ha']['peer']['serial'] if 'ha' in device else None}
+                             "ha_peer": device['ha']['peer']['serial'] if device.get('ha', {}).get('peer', {}).get('serial') else None}
                 vsys_in_use = []
                 if type(device['vsys']['entry']) is not list:
                     # if entry is not a list, then there is only one vsys
@@ -437,6 +437,16 @@ class PanoramaAPI(_PanPaloShared):
                 vsys_data['vsys_used'] = len(vsys_in_use)
                 devices_vsys.append(vsys_data)
         return devices_vsys
+    
+    def device_peer_check(self, device, devices):
+        '''
+        Checks that the device's peer exists in panorama
+        '''
+        for d in devices:
+            if d['serial'] == device['ha_peer']:
+                return True
+        return False
+
 
     def get_vsys_data(self, combine_ha=True, devices=None):
         """
@@ -451,7 +461,6 @@ class PanoramaAPI(_PanPaloShared):
             devices = self.get_devices()
 
         devices_vsys = self.get_vsys_fields(devices)
-
         if combine_ha:
             device_vsys_combined_ha = []
             device_peers_added_to_device_vsys_combined_ha = []
@@ -459,6 +468,10 @@ class PanoramaAPI(_PanPaloShared):
             for device in devices_vsys:
                 if not device['ha_peer']:
                     del device['ha_peer']
+                    device_vsys_combined_ha.append(device)
+                    continue
+                if not self.device_peer_check(device, devices):
+                    # if peer does not exist, remove it from the list
                     device_vsys_combined_ha.append(device)
                     continue
                 if device['serial'] not in device_peers_added_to_device_vsys_combined_ha:
@@ -469,10 +482,9 @@ class PanoramaAPI(_PanPaloShared):
                             ha_peer_data = d
                             break
                     # Combining serials with higher serial first ex: 1000_200
-                    higher_serial = max(device['serial'], ha_peer_data['serial'])
-                    lower_serial = min(device['serial'], ha_peer_data['serial'])
+                    higher_serial = max(device['serial'], device['ha_peer'])
+                    lower_serial = min(device['serial'], device['ha_peer'])
                     combined_serial = f"{higher_serial}_{lower_serial}"
-                    # Combining hostname and making sure the higher
 
                     # serial hostname is first by the following logic
                     higher_hostname = None
@@ -480,7 +492,10 @@ class PanoramaAPI(_PanPaloShared):
 
                     if device['serial'] == higher_serial:
                         higher_hostname = device['hostname']
-                        lower_hostname = ha_peer_data['hostname']
+                        if ha_peer_data is not None:
+                            # if ha_peer_data is None, then this is a single device
+                            # and we can just use the hostname
+                            lower_hostname = ha_peer_data['hostname']
                     else:
                         higher_hostname = ha_peer_data['hostname']
                         lower_hostname = device['hostname']
@@ -542,15 +557,20 @@ class PanoramaAPI(_PanPaloShared):
                "&xpath=/config/devices/entry[@name='localhost.localdomain']"
                f"/device-group/entry[@name='{device_group}']")
         resp = self._get_req(self.xml_uri+uri)
+        device_list = []
         if resp.ok:
             json_resp = self.xml_to_json(resp)
             if json_resp['response']['result']['entry']['devices'] is not None:
                 if 'devices' in json_resp['response']['result']['entry'] and '@type' not in json_resp['response']['result']['entry']['devices']:
-                    return json_resp['response']['result']['entry']['devices']['entry']
+                    device_group = json_resp['response']['result']['entry']['devices']['entry']
+                if isinstance(device_group, list):
+                    return device_group
+                elif isinstance(device_group, dict):
+                    return [device_group]  # Wrap the dictionary in a list and return it
             elif 'devicetype' in json_resp['response']['result']['entry']:
                 return None
         else:
-            print(resp.content)
+           pass
 
     def get_addresses(self, device_group):
 
