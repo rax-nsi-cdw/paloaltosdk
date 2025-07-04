@@ -471,7 +471,7 @@ class PanoramaAPI(_PanPaloShared):
                     device_vsys_combined_ha.append(device)
                     continue
                 if not self.device_peer_check(device, devices):
-                    # if peer does not exist, remove it from the list
+                    # if peer does not exist, add it to the list
                     device_vsys_combined_ha.append(device)
                     continue
                 if device['serial'] not in device_peers_added_to_device_vsys_combined_ha:
@@ -484,7 +484,7 @@ class PanoramaAPI(_PanPaloShared):
                     # Combining serials with higher serial first ex: 1000_200
                     higher_serial = max(device['serial'], device['ha_peer'])
                     lower_serial = min(device['serial'], device['ha_peer'])
-                    combined_serial = f"{higher_serial}_{lower_serial}"
+                    combined_serial = f"{higher_serial}, {lower_serial}"
 
                     # serial hostname is first by the following logic
                     higher_hostname = None
@@ -501,7 +501,7 @@ class PanoramaAPI(_PanPaloShared):
                         lower_hostname = device['hostname']
                     if not higher_hostname or not lower_hostname:
                         raise Exception("Unable to determine hostname for HA Peers")
-                    combined_hostname = f"{higher_hostname}_{lower_hostname}"
+                    combined_hostname = f"{higher_hostname}, {lower_hostname}"
                     ha_combined_vsys_data = {"serial": combined_serial,
                                              "hostname": combined_hostname,
                                              "lower_serial": lower_serial,
