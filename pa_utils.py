@@ -572,6 +572,31 @@ class PanoramaAPI(_PanPaloShared):
         else:
            pass
 
+    def get_templatestack_members(self, template_stack):
+        uri = ("?type=config&action=show"
+               "&xpath=/config/devices/entry[@name='localhost.localdomain']"
+               f"/template-stack/entry[@name='{template_stack}']")
+        resp = self._get_req(self.xml_uri+uri)
+        if resp.ok:
+            json_resp = self.xml_to_json(resp)
+            print(f"template_stack: {template_stack}, json_resp: {json_resp}")
+            if json_resp['response']['@status'] == "error":
+                return None
+            try:
+                if json_resp['response']['result']['entry']['devices'] is not None:
+                    if 'devices' in json_resp['response']['result']['entry'] and '@type' not in json_resp['response']['result']['entry']['devices']:
+                        ts_members = json_resp['response']['result']['entry']['devices']['entry']
+                    if isinstance(ts_members, list):
+                        return ts_members
+                    elif isinstance(ts_members, dict):
+                        return [ts_members]  # Wrap the dictionary in a list and return it
+                elif 'devicetype' in json_resp['response']['result']['entry']:
+                    return None
+            except KeyError:
+                return None
+        else:
+           pass
+
     def get_addresses(self, device_group):
 
         if device_group.lower() != "shared":
