@@ -464,14 +464,9 @@ class PanoramaAPI(_PanPaloShared):
         if combine_ha:
             device_vsys_combined_ha = []
             device_peers_added_to_device_vsys_combined_ha = []
-
             for device in devices_vsys:
                 if not device['ha_peer']:
                     del device['ha_peer']
-                    device_vsys_combined_ha.append(device)
-                    continue
-                if not self.device_peer_check(device, devices):
-                    # if peer does not exist, remove it from the list
                     device_vsys_combined_ha.append(device)
                     continue
                 if device['serial'] not in device_peers_added_to_device_vsys_combined_ha:
@@ -481,10 +476,13 @@ class PanoramaAPI(_PanPaloShared):
                         if d['serial'] == device['ha_peer']:
                             ha_peer_data = d
                             break
+                    if ha_peer_data == None: # we didn't find an ha_peer - add the standalone to the list and carry on
+                       device_vsys_combined_ha.append(device)
+                       continue
                     # Combining serials with higher serial first ex: 1000_200
                     higher_serial = max(device['serial'], device['ha_peer'])
                     lower_serial = min(device['serial'], device['ha_peer'])
-                    combined_serial = f"{higher_serial}_{lower_serial}"
+                    combined_serial = f"{higher_serial}, {lower_serial}"
 
                     # serial hostname is first by the following logic
                     higher_hostname = None
@@ -492,16 +490,13 @@ class PanoramaAPI(_PanPaloShared):
 
                     if device['serial'] == higher_serial:
                         higher_hostname = device['hostname']
-                        if ha_peer_data is not None:
-                            # if ha_peer_data is None, then this is a single device
-                            # and we can just use the hostname
-                            lower_hostname = ha_peer_data['hostname']
+                        lower_hostname = ha_peer_data['hostname']
                     else:
                         higher_hostname = ha_peer_data['hostname']
                         lower_hostname = device['hostname']
                     if not higher_hostname or not lower_hostname:
                         raise Exception("Unable to determine hostname for HA Peers")
-                    combined_hostname = f"{higher_hostname}_{lower_hostname}"
+                    combined_hostname = f"{higher_hostname}, {lower_hostname}"
                     ha_combined_vsys_data = {"serial": combined_serial,
                                              "hostname": combined_hostname,
                                              "lower_serial": lower_serial,
