@@ -1458,6 +1458,7 @@ class PanoramaAPI(_PanPaloShared):
                     for dev_vsys in device['vsys']['entry']:
                         dev_vsys_id = dev_vsys['@name'][-1]
                         vsys_ids_used.append(dev_vsys_id)
+        assert(len(vsys_ids_used) < 5)
 
         return PanoramaAPI.find_lowest_available_number(vsys_ids_used)
 
