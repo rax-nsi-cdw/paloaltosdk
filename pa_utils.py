@@ -8,6 +8,7 @@ import xml.etree.ElementTree as ET
 import xmltodict
 # import json
 import datetime
+import threading
 
 from paloaltosdk.local_exceptions import EmptySourceTranslationForRule
 from paloaltosdk.local_exceptions import EmptyDirectionForRule, EmptyAddressGroup
@@ -431,9 +432,7 @@ class PanoramaAPI(_PanPaloShared):
         return self.xml_to_json(resp)['response']['result']
 
     def get_vsys_max(self, sn):
-
         sys_limit_resp = self.get_sys_limits(sn, filter='cfg.general.max-vsys*')
-
         max_vsys_in_hex = re.search('max-vsys:\\s+(0x.*)', sys_limit_resp)
         if max_vsys_in_hex:
             return int(max_vsys_in_hex.group(1), 16)
@@ -445,16 +444,15 @@ class PanoramaAPI(_PanPaloShared):
 
         return None
 
-    def get_current_used_vsys(self, sn, devices=None):
-        if devices is None:
-            devices = self.get_devices()
-        for device in devices:
-            if device['serial'] == sn:
-                if 'vsys' in device and 'entry' in device['vsys']:
-                    return len(device['vsys']['entry'])
+    def get_current_used_vsys(self, device):
+        if 'vsys' in device and 'entry' in device['vsys']:
+            if type(device['vsys']['entry']) is dict:
+                # no list, we have a single entry which must be vsys1; none of the 4 we can allocate are in use
+                return 0
+            return len(device['vsys']['entry'])-1 # list of vsys -1 to ignore vsys1
         return None
 
-    def get_remaining_vsys(self, sn=None):
+    def get_remaining_vsys(self, device):
         """
         returns the number (int) of vsys unused
 
@@ -463,9 +461,14 @@ class PanoramaAPI(_PanPaloShared):
         Firewall must be in multi vsys mode to have return data
         """
 
-        if sn:
+        if device['serial']:
             try:
-                return self.get_vsys_max(sn) - self.get_current_used_vsys(sn)
+                # run this func once here and return two values, rather than run it again in the worker logic
+                # subtract 3 because we only care about the 4 vsys we decided to allocate to customers
+                max = self.get_vsys_max(device['serial']) -3
+                used = self.get_current_used_vsys(device)
+                remaining = max - used
+                return max, remaining
             except Exception as e:
                 self.logger.error(e)
                 return None
@@ -490,41 +493,45 @@ class PanoramaAPI(_PanPaloShared):
                     vsys_tags.append({'vsys': vsys['@name'], 'tags': tags})
                 return vsys_tags
 
-    def get_vsys_fields(self, devices: str, get_tags=False) -> list:
+    def vsys_worker(self, device, devices_vsys, lock, get_tags=False):
+        if device['multi-vsys'] == "yes":
+            vsys_max, vsys_free = self.get_remaining_vsys(device)
+            vsys_data = {'hostname': device['hostname'],
+                            'serial': device['serial'],
+                            'vsys_free': vsys_free,
+                            'vsys_max': vsys_max,
+                            "ha_peer": device['ha']['peer']['serial'] if device.get('ha', {}).get('peer', {}).get('serial') else None}
+            vsys_in_use = []
+            # if entry is a list, then there are multiple vsys
+            if type(device['vsys']['entry']) is list:
+                for vsys in device['vsys']['entry']:
+                    if vsys['@name'] != "vsys1":
+                        # Show devices doesn't have detailed vsys info (tags). Optionally retrieve tags
+                        if get_tags:
+                            tags = self.get_vsys_tags(device['serial'], vsys['@name'])
+                            vsys_in_use.append({'@name': vsys['@name'],
+                                                "display-name": vsys['display-name'], "tags": tags})
+                        else:
+                            vsys_in_use.append({'@name': vsys['@name'],
+                                                "display-name": vsys['display-name']})
+            vsys_data['vsys_in_use'] = vsys_in_use
+            vsys_data['vsys_used'] = len(vsys_in_use)
+            # use the lock synchronization primitive to safely update the list
+            with lock:
+                devices_vsys.append(vsys_data)
+
+    def get_vsys_fields(self, devices: str) -> list:
         ''' maps out vsys fields for each device'''
         devices_vsys = []
+        threads = []
+        devices_vsys_lock = threading.Lock()
         for device in devices:
-            if device['multi-vsys'] == "yes":
-                vsys_free = self.get_remaining_vsys(device['serial'])
-                vsys_max = self.get_vsys_max(device['serial'])
-                vsys_data = {'hostname': device['hostname'],
-                             'serial': device['serial'],
-                             'vsys_free': vsys_free,
-                             'vsys_max': vsys_max,
-                             "ha_peer": device['ha']['peer']['serial'] if device.get('ha', {}).get('peer', {}).get('serial') else None}
-                vsys_in_use = []
-                if type(device['vsys']['entry']) is not list:
-                    # if entry is not a list, then there is only one vsys
-                    vsys_in_use.append({'@name': device['vsys']['entry']['@name'],
-                                        "display-name": device['vsys']['entry']['display-name']})
-                    vsys_data['vsys_in_use'] = vsys_in_use
-                    vsys_data['vsys_used'] = len(vsys_in_use)
-                    devices_vsys.append(vsys_data)
-                    # Continue to next device
-                    continue
-                # if entry is a list, then there are multiple vsys
-                for vsys in device['vsys']['entry']:
-                    # Show devices doesn't have detailed vsys info (tags). Optionally retrieve tags
-                    if get_tags:
-                        tags = self.get_vsys_tags(device['serial'], vsys['@name'])
-                        vsys_in_use.append({'@name': vsys['@name'],
-                                            "display-name": vsys['display-name'], "tags": tags})
-                    else:
-                        vsys_in_use.append({'@name': vsys['@name'],
-                                            "display-name": vsys['display-name']})
-                vsys_data['vsys_in_use'] = vsys_in_use
-                vsys_data['vsys_used'] = len(vsys_in_use)
-                devices_vsys.append(vsys_data)
+            t = threading.Thread(target=self.vsys_worker, args=(device, devices_vsys, devices_vsys_lock), kwargs={"get_tags": False})
+            threads.append(t)
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
         return devices_vsys
     
     def device_peer_check(self, device, devices):
@@ -548,7 +555,6 @@ class PanoramaAPI(_PanPaloShared):
         devices_vsys = []
         if devices is None:
             devices = self.get_devices()
-
         devices_vsys = self.get_vsys_fields(devices)
         if combine_ha:
             device_vsys_combined_ha = []
@@ -663,7 +669,7 @@ class PanoramaAPI(_PanPaloShared):
         resp = self._get_req(self.xml_uri+uri)
         if resp.ok:
             json_resp = self.xml_to_json(resp)
-            print(f"template_stack: {template_stack}, json_resp: {json_resp}")
+            #print(f"template_stack: {template_stack}, json_resp: {json_resp}")
             if json_resp['response']['@status'] == "error":
                 return None
             try:
