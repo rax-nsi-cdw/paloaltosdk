@@ -127,11 +127,11 @@ class _PanPaloShared(PanRequests):
         return dict_content
 
     def commit(self, watch=False, force=False, target=None):
-        '''
+        """
         returns job ID
 
         IF no job ID then returns None
-        '''
+        """
         uri = (f"?key={self.headers['X-PAN-Key']}&type=commit&cmd=<commit></commit>"
                if not force else
                f"?key={self.headers['X-PAN-Key']}&type=commit&cmd=<commit><force></force></commit>")
@@ -158,11 +158,11 @@ class _PanPaloShared(PanRequests):
                 _PanPaloShared.watch(jobId, pb_description="Commit Progress")
 
     def push_to_devices(self, watch=False):
-        '''
+        """
         returns job ID
 
         IF no job ID then returns None
-        '''
+        """
         uri = (
             f"?key={self.headers['X-PAN-Key']}&type=commit&action=all&cmd="
             "<commit-all><shared-policy><admin><member>"
@@ -218,13 +218,12 @@ class _PanPaloShared(PanRequests):
                 raise Exception(resp.content)
 
     def check_status_of_job(self, jobID):
-        '''
+        """
 
         check status goes from ACT
-        check result'''
+        check result"""
 
-        uri = f"?key={self.headers['X-PAN-Key']}&type=op&cmd=<show><jobs><id>{jobID}</id></jobs>" \
-              f"</show>"
+        uri = f"?key={self.headers['X-PAN-Key']}&type=op&cmd=<show><jobs><id>{jobID}</id></jobs></show>"
 
         resp = self._get_req(self.xml_uri+uri)
         responseXml = ET.fromstring(resp.content)
@@ -323,7 +322,7 @@ class PanoramaAPI(_PanPaloShared):
         return self.xml_to_json(resp)['response']
 
     def config_xml_generic(self, xpath, serial=None, action="get"):
-        '''Used to get configuration data'''
+        """Used to get configuration data"""
         if serial is not None:
             uri = f"?type=config&target={serial}&action=get&xpath={xpath}"
         else:
@@ -385,7 +384,7 @@ class PanoramaAPI(_PanPaloShared):
                 return None
 
     def get_vsys_tags(self, sn, vsys_name):
-        '''Returns tags for a vsys'''
+        """Returns tags for a vsys"""
         xpath = f"/config/devices/entry/vsys/entry[@name='{vsys_name}']/tag"
         resp = self.config_xml_generic(xpath=xpath, serial=sn, action='get')
         if (resp['result'] is not None and
@@ -432,7 +431,7 @@ class PanoramaAPI(_PanPaloShared):
                 devices_vsys.append(vsys_data)
 
     def get_vsys_fields(self, devices: str) -> list:
-        ''' maps out vsys fields for each device'''
+        """ maps out vsys fields for each device"""
         devices_vsys = []
         threads = []
         devices_vsys_lock = threading.Lock()
@@ -446,14 +445,13 @@ class PanoramaAPI(_PanPaloShared):
         return devices_vsys
     
     def device_peer_check(self, device, devices):
-        '''
+        """
         Checks that the device's peer exists in panorama
-        '''
+        """
         for d in devices:
             if d['serial'] == device['ha_peer']:
                 return True
         return False
-
 
     def get_vsys_data(self, combine_ha=True, devices=None):
         """
@@ -680,7 +678,7 @@ class PanoramaAPI(_PanPaloShared):
                              address_group, device_group,
                              force=False,
                              force_deletion_of_all_objects_referenced=None):
-        '''
+        """
         params;
         force: This will remove direct references
 
@@ -690,7 +688,7 @@ class PanoramaAPI(_PanPaloShared):
 
         !!!!! WARNING: setting force will ALSO set force_deletion_of_all_objects_referenced
           to same value. To have different values, set them both manually !!!!!
-        '''
+        """
 
         if not isinstance(force, bool):
             raise ValueError("force must be a boolean")
@@ -754,7 +752,7 @@ class PanoramaAPI(_PanPaloShared):
                        address_name,
                        device_group, force=False,
                        force_deletion_of_all_objects_referenced=None):
-        '''
+        """
         params;
         force: This will remove direct references
         (delete the reference if it is last object in references)
@@ -763,7 +761,7 @@ class PanoramaAPI(_PanPaloShared):
 
         !!!!! WARNING: setting force will ALSO set force_deletion_of_all_objects_referenced
           to same value. To have different values, set them both manually !!!!!
-        '''
+        """
         if not isinstance(force, bool):
             raise ValueError("force must be a boolean")
 
@@ -853,8 +851,8 @@ class PanoramaAPI(_PanPaloShared):
                                  force=False,
                                  translation_direction=None,
                                  translation_type=None):
-        '''
-        '''
+        """
+        """
 
         if not type(rulebase) is str:
             raise ValueError("rulebase arg must be string.")
@@ -1353,8 +1351,9 @@ class PanoramaAPI(_PanPaloShared):
     @staticmethod
     def find_lowest_available_number(numbers):
 
-        ''' used in create_vsys method '''
+        """ used in create_vsys method """
         # Convert the strings to integers
+
         numbers = [int(num) for num in numbers]
 
         for i in range(1, 100):
@@ -1362,9 +1361,9 @@ class PanoramaAPI(_PanPaloShared):
                 return i
 
     def auto_vsysid(self, serial, devices=None):
-        ''' automatically finds the next lowest vsys id available to use,
+        """ automatically finds the next lowest vsys id available to use,
             this is used with create_vsys method
-            '''
+        """
         if devices is None:
             devices = self.get_devices()
         vsys_ids_used = []
@@ -1372,9 +1371,15 @@ class PanoramaAPI(_PanPaloShared):
         for device in devices:
             if device['serial'] == serial:
                 if 'vsys' in device:
-                    for dev_vsys in device['vsys']['entry']:
-                        dev_vsys_id = dev_vsys['@name'][-1]
-                        vsys_ids_used.append(dev_vsys_id)
+                    dev_vsys = device['vsys'].get('entry')
+                    if isinstance(dev_vsys, dict):
+                        vsys_ids_used.append(dev_vsys.get('@name')[-1])
+                    elif isinstance(dev_vsys, list):
+                        vsys_ids_used += [ele['@name'][-1] for ele in dev_vsys]
+
+                # At this point, device is found. We should break out of loop.
+                break
+
         assert(len(vsys_ids_used) < 5)
 
         return PanoramaAPI.find_lowest_available_number(vsys_ids_used)
@@ -1385,13 +1390,13 @@ class PanoramaAPI(_PanPaloShared):
                     tag_name: str = None,
                     make_changes_on_active_ha_peer: bool = False):
 
-        '''
+        """
         set vsys_id to 'auto' to automatically find the next available vsys id
 
         make_changes_on_active_ha_peer; will verify sn is an active peer if HA,
         else will create vsys on active peer
 
-        '''
+        """
 
         # serial = serial.split('_')[0]
         self.logger.info(f"Creating vsys {vsys_name} with id {vsys_id} on device {serial}")
@@ -1418,16 +1423,16 @@ class PanoramaAPI(_PanPaloShared):
 
         # TODO: WRITE LOGIC TO FIND OUT IF DEVICE IS ACTIVE OR PASSIVE
 
-        ''' Payload could also containt colors and comments:
+        """ Payload could also containt colors and comments:
                                     <tag>
                                         <color>color15</color>
                                         <comments>"other date created"</comments>
 
                                     </tag>
-        '''
+        """
         if tag_name:
             payload = (
-                f'''
+                f"""
                 <entry name="vsys{vsys_id}">
                     <display-name>{vsys_name}</display-name>
                     <tag>
@@ -1435,15 +1440,15 @@ class PanoramaAPI(_PanPaloShared):
                         <entry name="RESDATE:{self.today}"></entry>
                     </tag>
                 </entry>
-                '''
+                """
             )
         else:
-            payload = f'''
+            payload = f"""
                         <entry name="vsys{vsys_id}">
                             <display-name>{vsys_name}</display-name>
 
                         </entry>
-                        '''
+                        """
         # FIXME: add date created
 
         uri = (f'?type=config&target={serial}&action=set'
@@ -1462,11 +1467,11 @@ class PanoramaAPI(_PanPaloShared):
 
     def delete_vsys(self, serial: int, vsys_name: str = None, vsys_id: int = None, ):
 
-        '''
+        """
         Deletes vysys. Requires serial and either vsys_name or
         vsys_id to be passed. If both are passed, vsys_id will be used.
 
-        '''
+        """
 
         if vsys_id:
             uri = (f"?type=config&target={serial}&action=delete"
@@ -1539,10 +1544,10 @@ class PanOSAPI(_PanPaloShared):
     rest_uri = "/restapi/v10.2/"
     xml_uri = "/api/"
 
-    '''
+    """
     api class for Palo Alto Firewall bypassing Panorama
 
-    '''
+    """
 
     def __init__(self, panorama_mgmt_ip):
         super().__init__()
@@ -1696,7 +1701,7 @@ class PanOSAPI(_PanPaloShared):
                              force=False,
                              force_deletion_of_all_objects_referenced=None):
 
-        '''
+        """
         params;
         force: This will remove direct references
         (delete the reference if it is last object in references)
@@ -1705,7 +1710,7 @@ class PanOSAPI(_PanPaloShared):
 
         !!!!! WARNING: setting force will ALSO set force_deletion_of_all_objects_referenced
         to same value. To have different values, set them both manually !!!!!
-        '''
+        """
 
         if not isinstance(force, bool):
             raise ValueError("force must be a boolean")
@@ -1768,7 +1773,7 @@ class PanOSAPI(_PanPaloShared):
                        location="vsys",
                        force=False,
                        force_deletion_of_all_objects_referenced=None):
-        '''
+        """
         params;
         force: This will remove direct references
         (delete the reference if it is last object in references)
@@ -1778,7 +1783,7 @@ class PanOSAPI(_PanPaloShared):
         !!!!! WARNING: setting force will ALSO set
         force_deletion_of_all_objects_referenced to same value.
         To have different values, set them both manually !!!!!
-        '''
+        """
         if not isinstance(force, bool):
             raise ValueError("force must be a boolean")
 
