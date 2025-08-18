@@ -249,6 +249,95 @@ class PanoramaAPI(_PanPaloShared):
             self.IP = panorama_mgmt_ip
         self.LoggedIn = False
 
+    # ------------------ Job / Activity Helpers ------------------ #
+    def _get_all_jobs(self):
+        """Return a list of all jobs from Panorama (empty list on any parse failure).
+
+        Uses the operational command:
+            <show><jobs><all></all></jobs></show>
+        """
+        uri = f"?key={self.headers.get('X-PAN-Key','')}&type=op&cmd=<show><jobs><all></all></jobs></show>"
+        resp = self._get_req(self.xml_uri + uri)
+        try:
+            jobs = self.xml_to_json(resp)['response']['result']['job']
+        except Exception:
+            return []
+        if not isinstance(jobs, list):
+            jobs = [jobs]
+        return jobs
+
+    def get_jobs_for_serial(self, serial, statuses=("ACT", "PEND", "QUEUED")):
+        """Return jobs matching a firewall serial filtered by status.
+
+        Args:
+            serial (str): Firewall serial number to match.
+            statuses (Iterable[str] | None): If provided, only include jobs whose
+                job['status'] is in this collection. Pass None to disable filtering.
+
+        A job is considered related to a device if its XML contains a devices/entry
+        element whose @name attribute equals the serial. Some jobs might not list
+        per-device results (e.g., pure config validation jobs); those are skipped.
+        """
+        jobs = self._get_all_jobs()
+        if not jobs:
+            return []
+        matched = []
+        for job in jobs:
+            status = job.get('status')
+            if statuses and status not in statuses:
+                continue
+            devices_block = job.get('devices') or job.get('device')
+            if not devices_block:
+                continue
+            # Normalized extraction of entries
+            entries = None
+            if isinstance(devices_block, dict):
+                entries = devices_block.get('entry')
+            elif isinstance(devices_block, list):
+                # Rare structure; gather all entry fields
+                collected = []
+                for d in devices_block:
+                    if isinstance(d, dict) and 'entry' in d:
+                        collected.append(d['entry'])
+                entries = collected
+            if not entries:
+                continue
+            # entries can be dict or list of dicts
+            if isinstance(entries, dict):
+                entry_list = [entries]
+            elif isinstance(entries, list):
+                entry_list = entries
+            else:
+                entry_list = []
+            for e in entry_list:
+                if isinstance(e, dict) and e.get('@name') == serial:
+                    matched.append(job)
+                    break  # done with this job
+        return matched
+
+    def has_active_jobs(self, serial, statuses=("ACT", "PEND", "QUEUED")):
+        """Return True if there is at least one active (status-filtered) job for serial."""
+        return len(self.get_jobs_for_serial(serial, statuses=statuses)) > 0
+
+    # def wait_for_no_active_jobs(self, serial, poll_interval=5, timeout=300,
+    #                             statuses=("ACT", "PEND", "QUEUED")):
+    #     """Block (polling) until no active jobs remain for the serial or timeout.
+
+    #     Raises TimeoutError if the timeout (seconds) is exceeded.
+    #     Returns the final list (expected empty) of active jobs (always []).
+    #     """
+    #     start = time.time()
+    #     while True:
+    #         active = self.get_jobs_for_serial(serial, statuses=statuses)
+    #         if not active:
+    #             return active
+    #         if time.time() - start > timeout:
+    #             raise TimeoutError(
+    #                 f"Active jobs for serial {serial} did not clear within {timeout}s: "
+    #                 f"{[j.get('id') for j in active]}"
+    #             )
+    #         time.sleep(poll_interval)
+
     @staticmethod
     def _convert_reference_response_to_list(references_string):
         """
