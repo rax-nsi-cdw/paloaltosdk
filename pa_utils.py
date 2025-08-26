@@ -282,6 +282,7 @@ class PanoramaAPI(_PanPaloShared):
         if not jobs:
             return []
         matched = []
+        print(jobs)
         for job in jobs:
             status = job.get('status')
             if statuses and status not in statuses:
