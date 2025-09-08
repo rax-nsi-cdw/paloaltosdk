@@ -9,9 +9,10 @@ import xmltodict
 # import json
 import datetime
 import threading
+from nspylib.clients.paloalto.palo import PaloClient
 
-from paloaltosdk.local_exceptions import EmptySourceTranslationForRule
-from paloaltosdk.local_exceptions import EmptyDirectionForRule, EmptyAddressGroup
+from local_exceptions import EmptySourceTranslationForRule
+from local_exceptions import EmptyDirectionForRule, EmptyAddressGroup
 from tqdm import tqdm
 
 warnings.filterwarnings("ignore")
@@ -237,6 +238,16 @@ class _PanPaloShared(PanRequests):
         except Exception as e:
             return {"error": e, "api_response": resp.content}
 
+    # moved into shared class so login() for palo firewall class can use it
+    def get_api_version(self):
+
+        uri = f"?type=version&key={self.headers['X-PAN-Key']}"
+
+        resp = self._get_req(self.xml_uri+uri)
+
+        responseXml = ET.fromstring(resp.content)
+        return responseXml.find('result').find('sw-version').text
+        # return {"status": responseXml.find('result').find('job').find('status').text,
 
 class PanoramaAPI(_PanPaloShared):
 
@@ -380,16 +391,6 @@ class PanoramaAPI(_PanPaloShared):
             raise Exception(f"Unable to split reference string: {references_string} ")
 
         return references
-
-    def get_api_version(self):
-
-        uri = f"?type=version&key={self.headers['X-PAN-Key']}"
-
-        resp = self._get_req(self.xml_uri+uri)
-
-        responseXml = ET.fromstring(resp.content)
-        return responseXml.find('result').find('sw-version').text
-        # return {"status": responseXml.find('result').find('job').find('status').text,
 
     def get_devices(self, device_list=None):
         if device_list:
@@ -1487,12 +1488,37 @@ class PanoramaAPI(_PanPaloShared):
         else will create vsys on active peer
 
         """
+        # check if pending changes for the same user (check commit is partial) - if pending, return device busy api response
+        # check device to see if active or single (nspylib method does this)
+        # check devices are in sync (if HA) -- if not in sync, return devices not in sync response
+        # if passive find active device (using HA info call), and swap the serials over
+        # add in the commit in progress check logic so back to back calls via API or when vsys is added via UI, API does not overwrite
+        # do the create vsys logic
 
         # serial = serial.split('_')[0]
         self.logger.info(f"Creating vsys {vsys_name} with id {vsys_id} on device {serial}")
         if str(vsys_id).lower() == 'auto':
             # find next available vsys id automatically
             vsys_id = self.auto_vsysid(serial)
+        
+        sys_info_dict = self.get_sys_info(serial)
+        breakpoint()
+        palo_device_ip = sys_info_dict["result"]["system"]["ip-address"]
+        print(f"palo_device_ip = {palo_device_ip}")
+
+        # pFw = PaloFwAPI(palo_device_ip)
+        # pFw.Username = "netsec.nsi_a"
+        # pFw.Password = input("password please:\n")
+        # pFw.headers
+        # print("pFw login...")
+        # pFw.login()
+        # print(pFw.check_ha_state())
+        # print(pFw.check_ha_sync_status())
+        password = input("password please:\n")
+        palo = PaloClient(ip=palo_device_ip, user="netsec.nsi_a", password=password)
+        palo.connect()
+        print(palo.get_ha_status())
+
         # FIXME: FINISH BELOW FOR CONFIGURING PEER
         # if make_changes_on_active_ha_peer:
 
@@ -1628,6 +1654,24 @@ class PanoramaAPI(_PanPaloShared):
 
             return del_response_objects
 
+class PaloFwAPI(_PanPaloShared):
+
+    def __init__(self, palo_device_ip):
+        super().__init__()
+        self.IP = palo_device_ip
+        return
+
+    # Login and api calls already exist in the inherited classes
+    # TODO we can send these calls via the panorama (issue of cluster-unknown), or direct to device
+
+    # determine if single or HA
+    def check_ha_state(self):
+        xmlResp = self._get_req(self.xml_uri+"?type=op&cmd=<show><high-availability><state></state></high-availability></show>")
+        return self.xml_to_json(xmlResp)["response"]["result"]["group"]["local-info"]["state"]
+    
+    def check_ha_sync_status(self):
+        xmlResp = self._get_req(self.xml_uri+"?type=op&cmd=<show><high-availability><state></state></high-availability></show>")
+        return self.xml_to_json(xmlResp)["response"]["result"]["group"]["running-sync"]
 
 class PanOSAPI(_PanPaloShared):
 
@@ -2427,3 +2471,12 @@ class PanOSAPI(_PanPaloShared):
         #     print("No addresses found!")
 
         return del_response_objects
+
+if __name__ == "__main__":
+    pamAPI = PanoramaAPI(panorama_mgmt_ip="204.232.167.99")
+    pamAPI.Username = "netsec.nsi_a"
+    pamAPI.Password = input("password please:\n")
+    pamAPI.headers
+    print("pamAPI login...")
+    pamAPI.login()
+    x = pamAPI.create_vsys("ALEX_TEST", "", "026701009284")
