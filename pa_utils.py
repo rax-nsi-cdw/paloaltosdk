@@ -10,9 +10,11 @@ import xmltodict
 import datetime
 import threading
 from nspylib.clients.paloalto.palo import PaloClient
+import os
 
-from local_exceptions import EmptySourceTranslationForRule
-from local_exceptions import EmptyDirectionForRule, EmptyAddressGroup
+# paloaltosdk. needed if testing with flask, though drop if running python3 pa_utils.py
+from paloaltosdk.local_exceptions import EmptySourceTranslationForRule
+from paloaltosdk.local_exceptions import EmptyDirectionForRule, EmptyAddressGroup
 from tqdm import tqdm
 
 warnings.filterwarnings("ignore")
@@ -1488,28 +1490,37 @@ class PanoramaAPI(_PanPaloShared):
         else will create vsys on active peer
 
         """
-        # check if pending changes for the same user (check commit is partial) - if pending, return device busy api response
-        # check device to see if active or single (nspylib method does this)
-        # check devices are in sync (if HA) -- if not in sync, return devices not in sync response
-        # if passive find active device (using HA info call), and swap the serials over
-        # add in the commit in progress check logic so back to back calls via API or when vsys is added via UI, API does not overwrite
-        # do the create vsys logic
+        # TODO make all this checking logic a decorator (so we will have pre-check decorator and an Auth decorator on each endpoint)
 
-        # serial = serial.split('_')[0]
+        # create a palo firewall client using the serial
+        print("setting up paFw client")
+        sys_info_dict = self.get_sys_info(serial)
+        palo_device_ip = sys_info_dict["result"]["system"]["ip-address"]
+        password = os.getenv("NISA_PASS")
+        palo = PaloClient(ip=palo_device_ip, user=self.Username, password=password)
+        palo.connect()
+        print("setting up paFw client Done...")
+        ha_info = palo.get_ha_info()
+        ha_state = palo.get_ha_status()
+        if ha_state not in ["single", "active"]:
+            raise RuntimeError("Unexpected HA state. Review HA configuration/state.")
+
+        # check if pending changes for the same user (check commit is partial) - if pending, return device busy api response
+        if palo.are_uncommitted_changes_present(admin=self.Username):
+            raise RuntimeError("Pending changes on device for current user. Review, commit/discard changes and retry")
+
+        # add in the commit in progress check logic so back to back calls via API or when vsys is added via UI, API does not overwrite
+        # if palo.check_commit_in_progress():
+        #     pass # something suitable for the endpoint to return
+
+        if ha_state != "single":
+            if ha_info["group"]["running-sync"] != "synchronized":
+                raise RuntimeError("Devices not in sync.")
+
         self.logger.info(f"Creating vsys {vsys_name} with id {vsys_id} on device {serial}")
         if str(vsys_id).lower() == 'auto':
             # find next available vsys id automatically
             vsys_id = self.auto_vsysid(serial)
-        
-        sys_info_dict = self.get_sys_info(serial)
-        breakpoint()
-        palo_device_ip = sys_info_dict["result"]["system"]["ip-address"]
-        print(f"palo_device_ip = {palo_device_ip}")
-
-        password = input("password please:\n")
-        palo = PaloClient(ip=palo_device_ip, user="netsec.nsi_a", password=password)
-        palo.connect()
-        print(palo.get_ha_status())
 
         """ Payload could also containt colors and comments:
                                     <tag>
@@ -2429,7 +2440,7 @@ class PanOSAPI(_PanPaloShared):
 if __name__ == "__main__":
     pamAPI = PanoramaAPI(panorama_mgmt_ip="204.232.167.99")
     pamAPI.Username = "netsec.nsi_a"
-    pamAPI.Password = input("password please:\n")
+    pamAPI.Password = os.getenv("NISA_PASS")
     pamAPI.headers
     print("pamAPI login...")
     pamAPI.login()
