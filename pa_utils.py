@@ -1506,38 +1506,10 @@ class PanoramaAPI(_PanPaloShared):
         palo_device_ip = sys_info_dict["result"]["system"]["ip-address"]
         print(f"palo_device_ip = {palo_device_ip}")
 
-        # pFw = PaloFwAPI(palo_device_ip)
-        # pFw.Username = "netsec.nsi_a"
-        # pFw.Password = input("password please:\n")
-        # pFw.headers
-        # print("pFw login...")
-        # pFw.login()
-        # print(pFw.check_ha_state())
-        # print(pFw.check_ha_sync_status())
         password = input("password please:\n")
         palo = PaloClient(ip=palo_device_ip, user="netsec.nsi_a", password=password)
         palo.connect()
         print(palo.get_ha_status())
-
-        # FIXME: FINISH BELOW FOR CONFIGURING PEER
-        # if make_changes_on_active_ha_peer:
-
-        #     devices = self.get_devices()
-        #     found_active_peer = False
-        #     peer_index = -1
-
-        #     while not found_active_peer and peer_index < 2:
-        #         peer_index += 1
-
-        #         for device in devices:
-
-        #             if device['@name'] == sn.split('_')[peer_index]:
-        #                 if 'ha' in device:
-        #                     if device['ha']['state'] == 'active':
-        #                         found_active_peer = True
-        #                         serial = device['@name']
-
-        # TODO: WRITE LOGIC TO FIND OUT IF DEVICE IS ACTIVE OR PASSIVE
 
         """ Payload could also containt colors and comments:
                                     <tag>
@@ -1654,24 +1626,6 @@ class PanoramaAPI(_PanPaloShared):
 
             return del_response_objects
 
-class PaloFwAPI(_PanPaloShared):
-
-    def __init__(self, palo_device_ip):
-        super().__init__()
-        self.IP = palo_device_ip
-        return
-
-    # Login and api calls already exist in the inherited classes
-    # TODO we can send these calls via the panorama (issue of cluster-unknown), or direct to device
-
-    # determine if single or HA
-    def check_ha_state(self):
-        xmlResp = self._get_req(self.xml_uri+"?type=op&cmd=<show><high-availability><state></state></high-availability></show>")
-        return self.xml_to_json(xmlResp)["response"]["result"]["group"]["local-info"]["state"]
-    
-    def check_ha_sync_status(self):
-        xmlResp = self._get_req(self.xml_uri+"?type=op&cmd=<show><high-availability><state></state></high-availability></show>")
-        return self.xml_to_json(xmlResp)["response"]["result"]["group"]["running-sync"]
 
 class PanOSAPI(_PanPaloShared):
 
