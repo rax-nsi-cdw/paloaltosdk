@@ -251,6 +251,50 @@ class _PanPaloShared(PanRequests):
         return responseXml.find('result').find('sw-version').text
         # return {"status": responseXml.find('result').find('job').find('status').text,
 
+
+def checks(func):
+    def wrapper(self, *args, **kwargs):
+        print("decorator running...")
+        # TODO how do you handle if some of the positional args are not provided?
+        # (the indexing in the decorator will be wrong)
+        serial = args[2]
+        print(f"serial={serial}")
+
+        # create a palo firewall client using the serial
+        sys_info_dict = self.get_sys_info(serial)
+        palo_device_ip = sys_info_dict["result"]["system"]["ip-address"]
+        password = os.getenv("NISA_PASS")
+        palo = PaloClient(ip=palo_device_ip, user=self.Username, password=password)
+        palo.connect()
+        print("fw client setup done...")
+
+        # gather high-availability information
+        ha_info = palo.get_ha_info()
+        ha_state = palo.get_ha_status()
+        print("got ha info...")
+
+        if ha_state not in ["single", "active"]:
+            raise RuntimeError("Unexpected HA state. Review HA configuration/state.")
+        print("checked ha state...")
+        # check if service user has pending changes
+        # TODO commit called in outer func is not partial
+        if palo.are_uncommitted_changes_present(admin=self.Username):
+            raise RuntimeError("Uncommitted changes on device for current user. "
+                               "Review, commit/discard changes and retry.")
+        print("checked for uncommitted changes...")
+        # check for commit in progress
+        if palo.are_there_pending_jobs():
+            raise RuntimeError("ACT/PEND/QUEUED jobs on device. Re-run the call later.")
+        print("checked for pending jobs...")
+        # check ha pair is in sync
+        if ha_state != "single":
+            if ha_info["group"]["running-sync"] != "synchronized":
+                raise RuntimeError("Devices not in sync.")
+        print("all checks complete...")
+        func(self, *args, **kwargs)
+    return wrapper
+
+
 class PanoramaAPI(_PanPaloShared):
 
     # rest_uri = f"/restapi/{self.sw_version}"
@@ -1477,11 +1521,11 @@ class PanoramaAPI(_PanPaloShared):
 
         return PanoramaAPI.find_lowest_available_number(vsys_ids_used)
 
+    @checks
     def create_vsys(self, vsys_name: str,
                     vsys_id: str,
                     serial: int,
-                    tag_name: str = None,
-                    make_changes_on_active_ha_peer: bool = False):
+                    tag_name: str = None):
 
         """
         set vsys_id to 'auto' to automatically find the next available vsys id
@@ -1490,34 +1534,7 @@ class PanoramaAPI(_PanPaloShared):
         else will create vsys on active peer
 
         """
-        # TODO make all this checking logic a decorator (so we will have pre-check decorator and an Auth decorator on each endpoint)
-
-        # create a palo firewall client using the serial
-        sys_info_dict = self.get_sys_info(serial)
-        palo_device_ip = sys_info_dict["result"]["system"]["ip-address"]
-        password = os.getenv("NISA_PASS")
-        palo = PaloClient(ip=palo_device_ip, user=self.Username, password=password)
-        palo.connect()
-        ha_info = palo.get_ha_info()
-        ha_state = palo.get_ha_status()
-        if ha_state not in ["single", "active"]:
-            raise RuntimeError("Unexpected HA state. Review HA configuration/state.")
-
-        # check if pending changes for the same user (check commit is partial)
-        #  - if pending, return device busy api response
-        if palo.are_uncommitted_changes_present(admin=self.Username):
-            raise RuntimeError("Uncommitted changes on device for current user. "
-                               "Review, commit/discard changes and retry.")
-
-        # add in the commit in progress check logic so back to back calls via API or when vsys is added via UI,
-        # API does not overwrite
-        if palo.are_there_pending_jobs():
-            raise RuntimeError("ACT/PEND/QUEUED jobs on device. Re-run the call later.")
-
-        if ha_state != "single":
-            if ha_info["group"]["running-sync"] != "synchronized":
-                raise RuntimeError("Devices not in sync.")
-
+        print("running create_vsys...")
         self.logger.info(f"Creating vsys {vsys_name} with id {vsys_id} on device {serial}")
         if str(vsys_id).lower() == 'auto':
             # find next available vsys id automatically
@@ -1563,6 +1580,7 @@ class PanoramaAPI(_PanPaloShared):
         except Exception as e:
             self.logger.error(f"Error creating vsys: {e}")
             raise Exception(f"Error creating vsys: {e}")
+        print("create_vsys OK...")
         return self.xml_to_json(resp)['response']
 
     def delete_vsys(self, serial: int, vsys_name: str = None, vsys_id: int = None, ):
