@@ -397,8 +397,8 @@ class PanoramaAPI(_PanPaloShared):
     def get_devices(self, device_list=None):
         if device_list:
             device_subset = []
-            for device in device_list:
-                uri = '?type=op&cmd=<show><devices><devices><entry name="026701009351"></devices></show>'
+            for serial in device_list:
+                uri = f'?type=op&cmd=<show><devices><devices><entry name="{serial}"></devices></show>'
                 # f"&xpath=/config/devices/entry[@name='{device}']")
                 resp = self._get_req(self.xml_uri+uri)
                 device_subset.append(self.xml_to_json(resp)['response']['result']['devices']['entry'])
@@ -555,7 +555,7 @@ class PanoramaAPI(_PanPaloShared):
         Firewall must be in multi vsys mode to have return data
         """
         devices_vsys = []
-        if devices is None:
+        if not devices:
             devices = self.get_devices()
         devices_vsys = self.get_vsys_fields(devices)
         if combine_ha:
@@ -1493,25 +1493,26 @@ class PanoramaAPI(_PanPaloShared):
         # TODO make all this checking logic a decorator (so we will have pre-check decorator and an Auth decorator on each endpoint)
 
         # create a palo firewall client using the serial
-        print("setting up paFw client")
         sys_info_dict = self.get_sys_info(serial)
         palo_device_ip = sys_info_dict["result"]["system"]["ip-address"]
         password = os.getenv("NISA_PASS")
         palo = PaloClient(ip=palo_device_ip, user=self.Username, password=password)
         palo.connect()
-        print("setting up paFw client Done...")
         ha_info = palo.get_ha_info()
         ha_state = palo.get_ha_status()
         if ha_state not in ["single", "active"]:
             raise RuntimeError("Unexpected HA state. Review HA configuration/state.")
 
-        # check if pending changes for the same user (check commit is partial) - if pending, return device busy api response
+        # check if pending changes for the same user (check commit is partial)
+        #  - if pending, return device busy api response
         if palo.are_uncommitted_changes_present(admin=self.Username):
-            raise RuntimeError("Pending changes on device for current user. Review, commit/discard changes and retry")
+            raise RuntimeError("Uncommitted changes on device for current user. "
+                               "Review, commit/discard changes and retry.")
 
-        # add in the commit in progress check logic so back to back calls via API or when vsys is added via UI, API does not overwrite
-        # if palo.check_commit_in_progress():
-        #     pass # something suitable for the endpoint to return
+        # add in the commit in progress check logic so back to back calls via API or when vsys is added via UI,
+        # API does not overwrite
+        if palo.are_there_pending_jobs():
+            raise RuntimeError("ACT/PEND/QUEUED jobs on device. Re-run the call later.")
 
         if ha_state != "single":
             if ha_info["group"]["running-sync"] != "synchronized":
@@ -2437,11 +2438,11 @@ class PanOSAPI(_PanPaloShared):
 
         return del_response_objects
 
+
 if __name__ == "__main__":
     pamAPI = PanoramaAPI(panorama_mgmt_ip="204.232.167.99")
     pamAPI.Username = "netsec.nsi_a"
     pamAPI.Password = os.getenv("NISA_PASS")
     pamAPI.headers
-    print("pamAPI login...")
     pamAPI.login()
     x = pamAPI.create_vsys("ALEX_TEST", "", "026701009284")
