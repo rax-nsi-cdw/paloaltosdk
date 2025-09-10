@@ -254,11 +254,9 @@ class _PanPaloShared(PanRequests):
 
 def checks(func):
     def wrapper(self, *args, **kwargs):
-        print("decorator running...")
         # TODO how do you handle if some of the positional args are not provided?
         # (the indexing in the decorator will be wrong)
         serial = args[2]
-        print(f"serial={serial}")
 
         # create a palo firewall client using the serial
         sys_info_dict = self.get_sys_info(serial)
@@ -266,32 +264,31 @@ def checks(func):
         password = os.getenv("NISA_PASS")
         palo = PaloClient(ip=palo_device_ip, user=self.Username, password=password)
         palo.connect()
-        print("fw client setup done...")
 
         # gather high-availability information
         ha_info = palo.get_ha_info()
         ha_state = palo.get_ha_status()
-        print("got ha info...")
 
         if ha_state not in ["single", "active"]:
             raise RuntimeError("Unexpected HA state. Review HA configuration/state.")
-        print("checked ha state...")
+
         # check if service user has pending changes
         # TODO commit called in outer func is not partial
+        # swap commit in progress with uncommitted changes? Get DJ input
         if palo.are_uncommitted_changes_present(admin=self.Username):
             raise RuntimeError("Uncommitted changes on device for current user. "
                                "Review, commit/discard changes and retry.")
-        print("checked for uncommitted changes...")
+
         # check for commit in progress
         if palo.are_there_pending_jobs():
             raise RuntimeError("ACT/PEND/QUEUED jobs on device. Re-run the call later.")
-        print("checked for pending jobs...")
+
         # check ha pair is in sync
         if ha_state != "single":
             if ha_info["group"]["running-sync"] != "synchronized":
                 raise RuntimeError("Devices not in sync.")
-        print("all checks complete...")
-        func(self, *args, **kwargs)
+
+        return func(self, *args, **kwargs)
     return wrapper
 
 
@@ -1573,14 +1570,13 @@ class PanoramaAPI(_PanPaloShared):
         try:
             resp = self._get_req(self.xml_uri+uri)
             resp.raise_for_status()
-
+            # TODO - if no more vsys can be added we need to return an appropriate message
         except requests.exceptions.HTTPError as e:
             self.logger.error(f"HTTPError creating vsys: {e}")
             raise Exception(f"HTTPError creating vsys: {e}")
         except Exception as e:
             self.logger.error(f"Error creating vsys: {e}")
             raise Exception(f"Error creating vsys: {e}")
-        print("create_vsys OK...")
         return self.xml_to_json(resp)['response']
 
     def delete_vsys(self, serial: int, vsys_name: str = None, vsys_id: int = None, ):
