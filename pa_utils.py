@@ -20,6 +20,15 @@ from tqdm import tqdm
 warnings.filterwarnings("ignore")
 
 
+class MaxVsysError(Exception):
+    def __init__(self):
+        self.msg = "max vsys limit reached"
+        super().__init__(self.msg)
+
+    def __str__(self):
+        return self.msg
+
+
 class PanRequests:
 
     def __init__(self, logging_format='%(message)s'):
@@ -129,15 +138,17 @@ class _PanPaloShared(PanRequests):
         dict_content = xmltodict.parse(xml_content)
         return dict_content
 
-    def commit(self, watch=False, force=False, target=None):
+    def commit(self, watch=False, force=False, target=None, partial: bool = True):
         """
         returns job ID
 
         IF no job ID then returns None
         """
-        uri = (f"?key={self.headers['X-PAN-Key']}&type=commit&cmd=<commit></commit>"
-               if not force else
-               f"?key={self.headers['X-PAN-Key']}&type=commit&cmd=<commit><force></force></commit>")
+
+        uri = f"?key={self.headers['X-PAN-Key']}&type=commit&cmd=<commit>"
+        partial_uri = f"<partial><admin><member>{self.Username}</member></admin></partial>" if partial else ""
+        uri += f"<force>{partial_uri}</force>" if force else partial_uri
+        uri += "</commit>"
 
         if target:
             uri += f'&target={target}'
@@ -252,44 +263,47 @@ class _PanPaloShared(PanRequests):
         # return {"status": responseXml.find('result').find('job').find('status').text,
 
 
-def checks(func):
-    def wrapper(self, *args, **kwargs):
-        # TODO how do you handle if some of the positional args are not provided?
-        # (the indexing in the decorator will be wrong)
-        serial = args[2]
-
-        # create a palo firewall client using the serial
-        sys_info_dict = self.get_sys_info(serial)
-        palo_device_ip = sys_info_dict["result"]["system"]["ip-address"]
-        password = os.getenv("NISA_PASS")
-        palo = PaloClient(ip=palo_device_ip, user=self.Username, password=password)
-        palo.connect()
-
-        # gather high-availability information
-        ha_info = palo.get_ha_info()
-        ha_state = palo.get_ha_status()
-
-        if ha_state not in ["single", "active"]:
-            raise RuntimeError("Unexpected HA state. Review HA configuration/state.")
-
-        # check if service user has pending changes
-        # TODO commit called in outer func is not partial
-        # swap commit in progress with uncommitted changes? Get DJ input
-        if palo.are_uncommitted_changes_present(admin=self.Username):
-            raise RuntimeError("Uncommitted changes on device for current user. "
-                               "Review, commit/discard changes and retry.")
-
-        # check for commit in progress
-        if palo.are_there_pending_jobs():
-            raise RuntimeError("ACT/PEND/QUEUED jobs on device. Re-run the call later.")
-
-        # check ha pair is in sync
-        if ha_state != "single":
-            if ha_info["group"]["running-sync"] != "synchronized":
-                raise RuntimeError("Devices not in sync.")
-
-        return func(self, *args, **kwargs)
-    return wrapper
+# def checks(func):
+#     def wrapper(self, *args, **kwargs):
+#         # TODO how do you handle if some of the positional args are not provided?
+#         # (the indexing in the decorator will be wrong)
+#         serial = args[2]
+# 
+#         # create a palo firewall client using the serial
+#         sys_info_dict = self.get_sys_info(serial)
+#         palo_device_ip = sys_info_dict["result"]["system"]["ip-address"]
+#         password = os.getenv("NISA_PASS")
+#         palo = PaloClient(ip=palo_device_ip, user=self.Username, password=password)
+#         palo.connect()
+# 
+#         # gather high-availability information
+#         ha_info = palo.get_ha_info()
+#         ha_state = palo.get_ha_status()
+# 
+#         if ha_state not in ["single", "active"]:
+#             raise RuntimeError("Unexpected HA state. Review HA configuration/state.")
+# 
+#         # check if service user has pending changes
+#         # TODO commit called in outer func is not partial
+#         # swap commit in progress with uncommitted changes? Get DJ input
+#         if palo.are_uncommitted_changes_present(admin=self.Username):
+#             raise RuntimeError("Uncommitted changes on device for current user. "
+#                                "Review, commit/discard changes and retry.")
+# 
+#         # check for commit in progress
+#         if palo.are_there_pending_jobs():
+#             raise RuntimeError("ACT/PEND/QUEUED jobs on device. Re-run the call later.")
+# 
+#         # check ha pair is in sync
+#         if ha_state != "single":
+#             if ha_info["group"]["running-sync"] != "synchronized":
+#                 raise RuntimeError("Devices not in sync. Re-run the call later (after sync completes)")
+# 
+#         return func(self, *args, **kwargs)
+# 
+#         # commit
+# 
+#     return wrapper
 
 
 class PanoramaAPI(_PanPaloShared):
@@ -302,6 +316,7 @@ class PanoramaAPI(_PanPaloShared):
         if panorama_mgmt_ip:
             self.IP = panorama_mgmt_ip
         self.LoggedIn = False
+
 
     # ------------------ Job / Activity Helpers ------------------ #
     def _get_all_jobs(self):
@@ -436,10 +451,14 @@ class PanoramaAPI(_PanPaloShared):
         return references
 
     def get_devices(self, device_list=None):
+        
         if device_list:
             device_subset = []
             for serial in device_list:
+
+                # THIS DOES NOT WORK
                 uri = f'?type=op&cmd=<show><devices><devices><entry name="{serial}"></devices></show>'
+                # TODO: Try and fix this with xpath name match / filter.
                 # f"&xpath=/config/devices/entry[@name='{device}']")
                 resp = self._get_req(self.xml_uri+uri)
                 device_subset.append(self.xml_to_json(resp)['response']['result']['devices']['entry'])
@@ -448,7 +467,6 @@ class PanoramaAPI(_PanPaloShared):
             uri = '?type=op&cmd=<show><devices><all></all></devices></show>'
             resp = self._get_req(self.xml_uri+uri)
             return self.xml_to_json(resp)['response']['result']['devices']['entry']
-
 
     def get_sys_info(self, sn):
         uri = f'?type=op&cmd=<show><system><info></info></system></show>&target={sn}'
@@ -1514,14 +1532,18 @@ class PanoramaAPI(_PanPaloShared):
                 # At this point, device is found. We should break out of loop.
                 break
 
-        assert(len(vsys_ids_used) < 5)
-
+        # assert should not be used for general error handling or controlling the flow of program logic,
+        # as they can be disabled
+        # assert(len(vsys_ids_used) < 5)
+        # Also, we should not hard code this. This should be coming from FACTS data.
+        # if len(vsys_ids_used) >= 5:
+        #     raise RuntimeError("VSYS capacity reached. Cannot add VSYS on this device")
         return PanoramaAPI.find_lowest_available_number(vsys_ids_used)
 
-    @checks
+    # @checks
     def create_vsys(self, vsys_name: str,
                     vsys_id: str,
-                    serial: int,
+                    serial: str,
                     tag_name: str = None):
 
         """
@@ -1533,6 +1555,7 @@ class PanoramaAPI(_PanPaloShared):
         """
         print("running create_vsys...")
         self.logger.info(f"Creating vsys {vsys_name} with id {vsys_id} on device {serial}")
+
         if str(vsys_id).lower() == 'auto':
             # find next available vsys id automatically
             vsys_id = self.auto_vsysid(serial)
@@ -1541,7 +1564,6 @@ class PanoramaAPI(_PanPaloShared):
                                     <tag>
                                         <color>color15</color>
                                         <comments>"other date created"</comments>
-
                                     </tag>
         """
         if tag_name:
@@ -1560,13 +1582,13 @@ class PanoramaAPI(_PanPaloShared):
             payload = f"""
                         <entry name="vsys{vsys_id}">
                             <display-name>{vsys_name}</display-name>
-
                         </entry>
                         """
         # FIXME: add date created
 
         uri = (f'?type=config&target={serial}&action=set'
                f'&xpath=/config/devices/entry/vsys&element={payload}')
+        
         try:
             resp = self._get_req(self.xml_uri+uri)
             resp.raise_for_status()
