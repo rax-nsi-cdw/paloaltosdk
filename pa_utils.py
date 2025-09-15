@@ -128,7 +128,6 @@ class _PanPaloShared(PanRequests):
                     progress = 100
                 pbar.update(progress - pbar.n)  # Update progress bar to the current progress
                 if progress >= 100:
-
                     break
                 time.sleep(1)
 
@@ -168,8 +167,8 @@ class _PanPaloShared(PanRequests):
             self.logger.error(e)
             return None
 
-            if watch:
-                _PanPaloShared.watch(jobId, pb_description="Commit Progress")
+        if watch:
+            _PanPaloShared.watch(jobId, pb_description="Commit Progress")
 
     def push_to_devices(self, watch=False):
         """
@@ -316,7 +315,6 @@ class PanoramaAPI(_PanPaloShared):
         if panorama_mgmt_ip:
             self.IP = panorama_mgmt_ip
         self.LoggedIn = False
-
 
     # ------------------ Job / Activity Helpers ------------------ #
     def _get_all_jobs(self):
@@ -1532,12 +1530,16 @@ class PanoramaAPI(_PanPaloShared):
                 # At this point, device is found. We should break out of loop.
                 break
 
-        # assert should not be used for general error handling or controlling the flow of program logic,
-        # as they can be disabled
-        # assert(len(vsys_ids_used) < 5)
-        # Also, we should not hard code this. This should be coming from FACTS data.
+        # ToDO: fix this uniformly for API and GUI.
+        #   Ideally with FACTS provided limits + latest from device (like it is done in API)
+        #   Also, assert should not be used for general error handling or controlling the flow of program logic,
+        #   as they can be disabled
+        #   So use:
         # if len(vsys_ids_used) >= 5:
         #     raise RuntimeError("VSYS capacity reached. Cannot add VSYS on this device")
+        assert(len(vsys_ids_used) < 5)
+
+
         return PanoramaAPI.find_lowest_available_number(vsys_ids_used)
 
     # @checks
