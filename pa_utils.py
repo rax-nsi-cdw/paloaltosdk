@@ -450,21 +450,19 @@ class PanoramaAPI(_PanPaloShared):
 
     def get_devices(self, device_list=None):
         
-        if device_list:
-            device_subset = []
-            for serial in device_list:
-
-                # THIS DOES NOT WORK
-                uri = f'?type=op&cmd=<show><devices><devices><entry name="{serial}"></devices></show>'
-                # TODO: Try and fix this with xpath name match / filter.
-                # f"&xpath=/config/devices/entry[@name='{device}']")
-                resp = self._get_req(self.xml_uri+uri)
-                device_subset.append(self.xml_to_json(resp)['response']['result']['devices']['entry'])
-            return device_subset
-        else:
-            uri = '?type=op&cmd=<show><devices><all></all></devices></show>'
-            resp = self._get_req(self.xml_uri+uri)
-            return self.xml_to_json(resp)['response']['result']['devices']['entry']
+        # if device_list:
+        #     device_subset = []
+        #     for serial in device_list:
+        #         # THIS DOES NOT WORK. PA CLI Command/API does not support filtering this result.
+        #         uri = f'?type=op&cmd=<show><devices><devices><entry name="{serial}"></devices></show>'
+        #         # f"&xpath=/config/devices/entry[@name='{device}']")
+        #         resp = self._get_req(self.xml_uri+uri)
+        #         device_subset.append(self.xml_to_json(resp)['response']['result']['devices']['entry'])
+        #     return device_subset
+        # else:
+        uri = '?type=op&cmd=<show><devices><all></all></devices></show>'
+        resp = self._get_req(self.xml_uri+uri)
+        return self.xml_to_json(resp)['response']['result']['devices']['entry']
 
     def get_sys_info(self, sn):
         uri = f'?type=op&cmd=<show><system><info></info></system></show>&target={sn}'
@@ -504,20 +502,20 @@ class PanoramaAPI(_PanPaloShared):
 
         return None
 
+    # ToDo : DJ - Remove from here once all code is switched to use VCMD app class
     def get_current_used_vsys(self, device):
         if 'vsys' in device and 'entry' in device['vsys']:
             if type(device['vsys']['entry']) is dict:
-                # no list, we have a single entry which must be vsys1; none of the 4 we can allocate are in use
+                # no list, we have a single entry which must be vsys1; none of the 4 we can allocate are in use
                 return 0
             return len(device['vsys']['entry'])-1 # list of vsys -1 to ignore vsys1
         return None
 
+    # ToDo : DJ - Remove from here once all code is switched to use VCMD app class
     def get_remaining_vsys(self, device):
         """
         returns the number (int) of vsys unused
-
         if no sn specified, method will pull all devices.
-
         Firewall must be in multi vsys mode to have return data
         """
 
@@ -525,7 +523,8 @@ class PanoramaAPI(_PanPaloShared):
             try:
                 # run this func once here and return two values, rather than run it again in the worker logic
                 # subtract 3 because we only care about the 4 vsys we decided to allocate to customers
-                max = self.get_vsys_max(device['serial']) -3
+                # ToDo - hardcoded value of 3 here. Tie to to FACTS limits?
+                max = self.get_vsys_max(device['serial']) - 3
                 used = self.get_current_used_vsys(device)
                 remaining = max - used
                 return max, remaining
@@ -544,6 +543,7 @@ class PanoramaAPI(_PanPaloShared):
         else:
             return None  # or any default value you prefer
 
+    # ToDo : DJ - Remove from here once all code is switched to use VCMD app class
     def get_all_vsys_tags(self, devices: list):
         for device in devices:
             if device['multi-vsys'] == "yes":
@@ -553,33 +553,38 @@ class PanoramaAPI(_PanPaloShared):
                     vsys_tags.append({'vsys': vsys['@name'], 'tags': tags})
                 return vsys_tags
 
+    # ToDo : DJ - Remove from here once all code is switched to use VCMD app class
     def vsys_worker(self, device, devices_vsys, lock, get_tags=False):
-        if device['multi-vsys'] == "yes":
-            vsys_max, vsys_free = self.get_remaining_vsys(device)
-            vsys_data = {'hostname': device['hostname'],
-                            'serial': device['serial'],
-                            'vsys_free': vsys_free,
-                            'vsys_max': vsys_max,
-                            "ha_peer": device['ha']['peer']['serial'] if device.get('ha', {}).get('peer', {}).get('serial') else None}
-            vsys_in_use = []
-            # if entry is a list, then there are multiple vsys
-            if type(device['vsys']['entry']) is list:
-                for vsys in device['vsys']['entry']:
-                    if vsys['@name'] != "vsys1":
-                        # Show devices doesn't have detailed vsys info (tags). Optionally retrieve tags
-                        if get_tags:
-                            tags = self.get_vsys_tags(device['serial'], vsys['@name'])
-                            vsys_in_use.append({'@name': vsys['@name'],
-                                                "display-name": vsys['display-name'], "tags": tags})
-                        else:
-                            vsys_in_use.append({'@name': vsys['@name'],
-                                                "display-name": vsys['display-name']})
-            vsys_data['vsys_in_use'] = vsys_in_use
-            vsys_data['vsys_used'] = len(vsys_in_use)
-            # use the lock synchronization primitive to safely update the list
-            with lock:
-                devices_vsys.append(vsys_data)
+        if device['multi-vsys'] != "yes":
+            return
+        vsys_max, vsys_free = self.get_remaining_vsys(device)
+        vsys_data = {
+            'hostname': device['hostname'],
+            'serial': device['serial'],
+            'vsys_free': vsys_free,
+            'vsys_max': vsys_max,
+            "ha_peer": device['ha']['peer']['serial'] if device.get('ha', {}).get('peer', {}).get('serial') else None
+        }
+        vsys_in_use = []
+        # if entry is a list, then there are multiple vsys
+        if type(device['vsys']['entry']) is list:
+            for vsys in device['vsys']['entry']:
+                if vsys['@name'] != "vsys1":
+                    # Show devices doesn't have detailed vsys info (tags). Optionally retrieve tags
+                    if get_tags:
+                        tags = self.get_vsys_tags(device['serial'], vsys['@name'])
+                        vsys_in_use.append({'@name': vsys['@name'],
+                                            "display-name": vsys['display-name'], "tags": tags})
+                    else:
+                        vsys_in_use.append({'@name': vsys['@name'],
+                                            "display-name": vsys['display-name']})
+        vsys_data['vsys_in_use'] = vsys_in_use
+        vsys_data['vsys_used'] = len(vsys_in_use)
+        # use the lock synchronization primitive to safely update the list
+        with lock:
+            devices_vsys.append(vsys_data)
 
+    # ToDo : DJ - Remove from here once all code is switched to use VCMD app class
     def get_vsys_fields(self, devices: str) -> list:
         """ maps out vsys fields for each device"""
         devices_vsys = []
@@ -603,6 +608,7 @@ class PanoramaAPI(_PanPaloShared):
                 return True
         return False
 
+    # ToDo : DJ - Remove from here once all code is switched to use VCMD app class 
     def get_vsys_data(self, combine_ha=True, devices=None):
         """
         returns number of used and available vsys. Includes tags
@@ -615,71 +621,73 @@ class PanoramaAPI(_PanPaloShared):
         if not devices:
             devices = self.get_devices()
         devices_vsys = self.get_vsys_fields(devices)
-        if combine_ha:
-            device_vsys_combined_ha = []
-            device_peers_added_to_device_vsys_combined_ha = []
-            for device in devices_vsys:
-                if not device['ha_peer']:
-                    del device['ha_peer']
+
+        if not combine_ha:
+            return devices_vsys
+
+        device_vsys_combined_ha = []
+        device_peers_added_to_device_vsys_combined_ha = []
+        for device in devices_vsys:
+            if not device['ha_peer']:
+                del device['ha_peer']
+                device_vsys_combined_ha.append(device)
+                continue
+            if device['serial'] not in device_peers_added_to_device_vsys_combined_ha:
+                # storing peer data in memory in next lines to use later
+                ha_peer_data = None
+                for d in devices_vsys:
+                    if d['serial'] == device['ha_peer']:
+                        ha_peer_data = d
+                        break
+                if ha_peer_data is None:  # we didn't find an ha_peer - add the standalone to the list and carry on
                     device_vsys_combined_ha.append(device)
                     continue
-                if device['serial'] not in device_peers_added_to_device_vsys_combined_ha:
-                    # storing peer data in memory in next lines to use later
-                    ha_peer_data = None
-                    for d in devices_vsys:
-                        if d['serial'] == device['ha_peer']:
-                            ha_peer_data = d
-                            break
-                    if ha_peer_data == None: # we didn't find an ha_peer - add the standalone to the list and carry on
-                       device_vsys_combined_ha.append(device)
-                       continue
-                    # Combining serials with higher serial first ex: 1000_200
-                    higher_serial = max(device['serial'], device['ha_peer'])
-                    lower_serial = min(device['serial'], device['ha_peer'])
-                    combined_serial = f"{higher_serial}, {lower_serial}"
+                # Combining serials with higher serial first ex: 1000_200
+                higher_serial = max(device['serial'], device['ha_peer'])
+                lower_serial = min(device['serial'], device['ha_peer'])
+                combined_serial = f"{higher_serial}, {lower_serial}"
 
-                    # serial hostname is first by the following logic
-                    higher_hostname = None
-                    lower_hostname = None
+                # serial hostname is first by the following logic
+                higher_hostname = None
+                lower_hostname = None
 
-                    if device['serial'] == higher_serial:
-                        higher_hostname = device['hostname']
-                        lower_hostname = ha_peer_data['hostname']
-                    else:
-                        higher_hostname = ha_peer_data['hostname']
-                        lower_hostname = device['hostname']
-                    if not higher_hostname or not lower_hostname:
-                        raise Exception("Unable to determine hostname for HA Peers")
-                    combined_hostname = f"{higher_hostname}, {lower_hostname}"
-                    ha_combined_vsys_data = {"serial": combined_serial,
-                                             "hostname": combined_hostname,
-                                             "lower_serial": lower_serial,
-                                             "higher_serial": higher_serial,
-                                             }
-                    if (
-                        device['vsys_max'] == ha_peer_data['vsys_max'] and
-                        device['vsys_used'] == ha_peer_data['vsys_used'] and
-                        device['vsys_free'] == ha_peer_data['vsys_free'] and
-                        device['vsys_in_use'] == ha_peer_data['vsys_in_use']
-                    ):
-                        ha_combined_vsys_data['vsys_max'] = device['vsys_max']
-                        ha_combined_vsys_data['vsys_used'] = device['vsys_used']
-                        ha_combined_vsys_data['vsys_free'] = device['vsys_free']
-                        ha_combined_vsys_data['vsys_in_use'] = device['vsys_in_use']
-                        ha_combined_vsys_data['Synced'] = True
-                    else:
-                        # HA Peers are not synced
-                        ha_combined_vsys_data['vsys_max'] = None
-                        ha_combined_vsys_data['vsys_used'] = None
-                        ha_combined_vsys_data['vsys_free'] = None
-                        ha_combined_vsys_data['vsys_in_use'] = None
-                        ha_combined_vsys_data['Synced'] = False
+                if device['serial'] == higher_serial:
+                    higher_hostname = device['hostname']
+                    lower_hostname = ha_peer_data['hostname']
+                else:
+                    higher_hostname = ha_peer_data['hostname']
+                    lower_hostname = device['hostname']
+                if not higher_hostname or not lower_hostname:
+                    raise Exception("Unable to determine hostname for HA Peers")
+                combined_hostname = f"{higher_hostname}, {lower_hostname}"
+                ha_combined_vsys_data = {"serial": combined_serial,
+                                         "hostname": combined_hostname,
+                                         "lower_serial": lower_serial,
+                                         "higher_serial": higher_serial,
+                                         }
+                if (
+                    device['vsys_max'] == ha_peer_data['vsys_max'] and
+                    device['vsys_used'] == ha_peer_data['vsys_used'] and
+                    device['vsys_free'] == ha_peer_data['vsys_free'] and
+                    device['vsys_in_use'] == ha_peer_data['vsys_in_use']
+                ):
+                    ha_combined_vsys_data['vsys_max'] = device['vsys_max']
+                    ha_combined_vsys_data['vsys_used'] = device['vsys_used']
+                    ha_combined_vsys_data['vsys_free'] = device['vsys_free']
+                    ha_combined_vsys_data['vsys_in_use'] = device['vsys_in_use']
+                    ha_combined_vsys_data['Synced'] = True
+                else:
+                    # HA Peers are not synced
+                    ha_combined_vsys_data['vsys_max'] = None
+                    ha_combined_vsys_data['vsys_used'] = None
+                    ha_combined_vsys_data['vsys_free'] = None
+                    ha_combined_vsys_data['vsys_in_use'] = None
+                    ha_combined_vsys_data['Synced'] = False
 
-                    device_peers_added_to_device_vsys_combined_ha.append(ha_peer_data['serial'])
-                    device_vsys_combined_ha.append(ha_combined_vsys_data)
+                device_peers_added_to_device_vsys_combined_ha.append(ha_peer_data['serial'])
+                device_vsys_combined_ha.append(ha_combined_vsys_data)
 
-            return device_vsys_combined_ha
-        return devices_vsys
+        return device_vsys_combined_ha
 
     def get_devicegroups(self, device_group=None, include_shared=False):
         if device_group:
@@ -1538,7 +1546,6 @@ class PanoramaAPI(_PanPaloShared):
         # if len(vsys_ids_used) >= 5:
         #     raise RuntimeError("VSYS capacity reached. Cannot add VSYS on this device")
         assert(len(vsys_ids_used) < 5)
-
 
         return PanoramaAPI.find_lowest_available_number(vsys_ids_used)
 
@@ -2477,10 +2484,10 @@ class PanOSAPI(_PanPaloShared):
         return del_response_objects
 
 
-if __name__ == "__main__":
-    pamAPI = PanoramaAPI(panorama_mgmt_ip="204.232.167.99")
-    pamAPI.Username = "netsec.nsi_a"
-    pamAPI.Password = os.getenv("NISA_PASS")
-    pamAPI.headers
-    pamAPI.login()
-    x = pamAPI.create_vsys("ALEX_TEST", "", "026701009284")
+# if __name__ == "__main__":
+#     pamAPI = PanoramaAPI(panorama_mgmt_ip=os.getenv("PANO_IP"))
+#     pamAPI.Username = os.getenv("NISA_USER")
+#     pamAPI.Password = os.getenv("NISA_PASS")
+#     pamAPI.headers
+#     pamAPI.login()
+#     x = pamAPI.create_vsys("ALEX_TEST", "", "026701009284")
