@@ -130,6 +130,7 @@ class _PanPaloShared(PanRequests):
                 if progress >= 100:
                     break
                 time.sleep(1)
+        return jobId
 
     @staticmethod
     def xml_to_json(resp):
