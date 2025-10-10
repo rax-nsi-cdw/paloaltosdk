@@ -206,7 +206,7 @@ class _PanPaloShared(PanRequests):
         # the quote function is encoding the password string. Ran into issues with requests not
         #  successfully encoding strings. For Example, anything with ### in the string.
         self.Password = quote(self.Password)
-
+        resp = None
         uri = f'?type=keygen&user={self.Username}&password={self.Password}'
         try:
             resp = self._post_req(self.xml_uri+uri)
@@ -222,14 +222,17 @@ class _PanPaloShared(PanRequests):
             except Exception as e:
                 self.sw_version = None
                 raise e
-        except Exception:
-
-            if 'invalid credential' in resp.content.decode('utf-8').lower():
-                self.logger.info(resp.content)
-                # print(resp.content)
-                raise Exception("Invalid Credentials.")
+        except Exception as err:
+            if resp:
+                if 'invalid credential' in resp.content.decode('utf-8').lower():
+                    self.logger.info(resp.content)
+                    # print(resp.content)
+                    raise Exception("Invalid Credentials.")
+                else:
+                    raise Exception(resp.content)
             else:
-                raise Exception(resp.content)
+                self.logger.error(str(err))
+                raise err
 
     def check_status_of_job(self, jobID):
         """
