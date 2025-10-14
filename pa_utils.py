@@ -41,7 +41,7 @@ class PanRequests:
         self._logging_format = logging_format
         logging.basicConfig(level=logging.CRITICAL, format=self.logging_format)
         self.logger = logging.getLogger(self.__class__.__name__)
-        self.logger.setLevel(logging.CRITICAL)
+        # self.logger.setLevel(logging.CRITICAL)
         self.today = datetime.datetime.now().strftime("%Y-%m-%d")
 
     @property
@@ -1566,7 +1566,6 @@ class PanoramaAPI(_PanPaloShared):
         else will create vsys on active peer
 
         """
-        print("running create_vsys...")
         self.logger.info(f"Creating vsys {vsys_name} with id {vsys_id} on device {serial}")
 
         if str(vsys_id).lower() == 'auto':
