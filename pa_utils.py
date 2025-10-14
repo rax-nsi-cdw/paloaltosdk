@@ -9,12 +9,24 @@ import xmltodict
 # import json
 import datetime
 import threading
+from nspylib.clients.paloalto.palo import PaloClient
+import os
 
+# paloaltosdk. needed if testing with flask, though drop if running python3 pa_utils.py
 from paloaltosdk.local_exceptions import EmptySourceTranslationForRule
 from paloaltosdk.local_exceptions import EmptyDirectionForRule, EmptyAddressGroup
 from tqdm import tqdm
 
 warnings.filterwarnings("ignore")
+
+
+class MaxVsysError(Exception):
+    def __init__(self):
+        self.msg = "max vsys limit reached"
+        super().__init__(self.msg)
+
+    def __str__(self):
+        return self.msg
 
 
 class PanRequests:
@@ -29,7 +41,7 @@ class PanRequests:
         self._logging_format = logging_format
         logging.basicConfig(level=logging.CRITICAL, format=self.logging_format)
         self.logger = logging.getLogger(self.__class__.__name__)
-        self.logger.setLevel(logging.CRITICAL)
+        # self.logger.setLevel(logging.CRITICAL)
         self.today = datetime.datetime.now().strftime("%Y-%m-%d")
 
     @property
@@ -116,9 +128,9 @@ class _PanPaloShared(PanRequests):
                     progress = 100
                 pbar.update(progress - pbar.n)  # Update progress bar to the current progress
                 if progress >= 100:
-
                     break
                 time.sleep(1)
+        return jobId
 
     @staticmethod
     def xml_to_json(resp):
@@ -126,15 +138,17 @@ class _PanPaloShared(PanRequests):
         dict_content = xmltodict.parse(xml_content)
         return dict_content
 
-    def commit(self, watch=False, force=False, target=None):
+    def commit(self, watch=False, force=False, target=None, partial: bool = True):
         """
         returns job ID
 
         IF no job ID then returns None
         """
-        uri = (f"?key={self.headers['X-PAN-Key']}&type=commit&cmd=<commit></commit>"
-               if not force else
-               f"?key={self.headers['X-PAN-Key']}&type=commit&cmd=<commit><force></force></commit>")
+
+        uri = f"?key={self.headers['X-PAN-Key']}&type=commit&cmd=<commit>"
+        partial_uri = f"<partial><admin><member>{self.Username}</member></admin></partial>" if partial else ""
+        uri += f"<force>{partial_uri}</force>" if force else partial_uri
+        uri += "</commit>"
 
         if target:
             uri += f'&target={target}'
@@ -154,8 +168,8 @@ class _PanPaloShared(PanRequests):
             self.logger.error(e)
             return None
 
-            if watch:
-                _PanPaloShared.watch(jobId, pb_description="Commit Progress")
+        if watch:
+            _PanPaloShared.watch(jobId, pb_description="Commit Progress")
 
     def push_to_devices(self, watch=False):
         """
@@ -192,7 +206,7 @@ class _PanPaloShared(PanRequests):
         # the quote function is encoding the password string. Ran into issues with requests not
         #  successfully encoding strings. For Example, anything with ### in the string.
         self.Password = quote(self.Password)
-
+        resp = None
         uri = f'?type=keygen&user={self.Username}&password={self.Password}'
         try:
             resp = self._post_req(self.xml_uri+uri)
@@ -208,14 +222,17 @@ class _PanPaloShared(PanRequests):
             except Exception as e:
                 self.sw_version = None
                 raise e
-        except Exception:
-
-            if 'invalid credential' in resp.content.decode('utf-8').lower():
-                self.logger.info(resp.content)
-                # print(resp.content)
-                raise Exception("Invalid Credentials.")
+        except Exception as err:
+            if resp:
+                if 'invalid credential' in resp.content.decode('utf-8').lower():
+                    self.logger.info(resp.content)
+                    # print(resp.content)
+                    raise Exception("Invalid Credentials.")
+                else:
+                    raise Exception(resp.content)
             else:
-                raise Exception(resp.content)
+                self.logger.error(str(err))
+                raise err
 
     def check_status_of_job(self, jobID):
         """
@@ -237,6 +254,60 @@ class _PanPaloShared(PanRequests):
         except Exception as e:
             return {"error": e, "api_response": resp.content}
 
+    # moved into shared class so login() for palo firewall class can use it
+    def get_api_version(self):
+
+        uri = f"?type=version&key={self.headers['X-PAN-Key']}"
+
+        resp = self._get_req(self.xml_uri+uri)
+
+        responseXml = ET.fromstring(resp.content)
+        return responseXml.find('result').find('sw-version').text
+        # return {"status": responseXml.find('result').find('job').find('status').text,
+
+
+# def checks(func):
+#     def wrapper(self, *args, **kwargs):
+#         # TODO how do you handle if some of the positional args are not provided?
+#         # (the indexing in the decorator will be wrong)
+#         serial = args[2]
+# 
+#         # create a palo firewall client using the serial
+#         sys_info_dict = self.get_sys_info(serial)
+#         palo_device_ip = sys_info_dict["result"]["system"]["ip-address"]
+#         password = os.getenv("NISA_PASS")
+#         palo = PaloClient(ip=palo_device_ip, user=self.Username, password=password)
+#         palo.connect()
+# 
+#         # gather high-availability information
+#         ha_info = palo.get_ha_info()
+#         ha_state = palo.get_ha_status()
+# 
+#         if ha_state not in ["single", "active"]:
+#             raise RuntimeError("Unexpected HA state. Review HA configuration/state.")
+# 
+#         # check if service user has pending changes
+#         # TODO commit called in outer func is not partial
+#         # swap commit in progress with uncommitted changes? Get DJ input
+#         if palo.are_uncommitted_changes_present(admin=self.Username):
+#             raise RuntimeError("Uncommitted changes on device for current user. "
+#                                "Review, commit/discard changes and retry.")
+# 
+#         # check for commit in progress
+#         if palo.are_there_pending_jobs():
+#             raise RuntimeError("ACT/PEND/QUEUED jobs on device. Re-run the call later.")
+# 
+#         # check ha pair is in sync
+#         if ha_state != "single":
+#             if ha_info["group"]["running-sync"] != "synchronized":
+#                 raise RuntimeError("Devices not in sync. Re-run the call later (after sync completes)")
+# 
+#         return func(self, *args, **kwargs)
+# 
+#         # commit
+# 
+#     return wrapper
+
 
 class PanoramaAPI(_PanPaloShared):
 
@@ -248,6 +319,96 @@ class PanoramaAPI(_PanPaloShared):
         if panorama_mgmt_ip:
             self.IP = panorama_mgmt_ip
         self.LoggedIn = False
+
+    # ------------------ Job / Activity Helpers ------------------ #
+    def _get_all_jobs(self):
+        """Return a list of all jobs from Panorama (empty list on any parse failure).
+
+        Uses the operational command:
+            <show><jobs><all></all></jobs></show>
+        """
+        uri = f"?key={self.headers.get('X-PAN-Key','')}&type=op&cmd=<show><jobs><all></all></jobs></show>"
+        resp = self._get_req(self.xml_uri + uri)
+        try:
+            jobs = self.xml_to_json(resp)['response']['result']['job']
+        except Exception:
+            return []
+        if not isinstance(jobs, list):
+            jobs = [jobs]
+        return jobs
+
+    def get_jobs_for_serial(self, serial, statuses=("ACT", "PEND", "QUEUED")):
+        """Return jobs matching a firewall serial filtered by status.
+
+        Args:
+            serial (str): Firewall serial number to match.
+            statuses (Iterable[str] | None): If provided, only include jobs whose
+                job['status'] is in this collection. Pass None to disable filtering.
+
+        A job is considered related to a device if its XML contains a devices/entry
+        element whose @name attribute equals the serial. Some jobs might not list
+        per-device results (e.g., pure config validation jobs); those are skipped.
+        """
+        jobs = self._get_all_jobs()
+        if not jobs:
+            return []
+        matched = []
+        print(jobs)
+        for job in jobs:
+            status = job.get('status')
+            if statuses and status not in statuses:
+                continue
+            devices_block = job.get('devices') or job.get('device')
+            if not devices_block:
+                continue
+            # Normalized extraction of entries
+            entries = None
+            if isinstance(devices_block, dict):
+                entries = devices_block.get('entry')
+            elif isinstance(devices_block, list):
+                # Rare structure; gather all entry fields
+                collected = []
+                for d in devices_block:
+                    if isinstance(d, dict) and 'entry' in d:
+                        collected.append(d['entry'])
+                entries = collected
+            if not entries:
+                continue
+            # entries can be dict or list of dicts
+            if isinstance(entries, dict):
+                entry_list = [entries]
+            elif isinstance(entries, list):
+                entry_list = entries
+            else:
+                entry_list = []
+            for e in entry_list:
+                if isinstance(e, dict) and e.get('@name') == serial:
+                    matched.append(job)
+                    break  # done with this job
+        return matched
+
+    def has_active_jobs(self, serial, statuses=("ACT", "PEND", "QUEUED")):
+        """Return True if there is at least one active (status-filtered) job for serial."""
+        return len(self.get_jobs_for_serial(serial, statuses=statuses)) > 0
+
+    # def wait_for_no_active_jobs(self, serial, poll_interval=5, timeout=300,
+    #                             statuses=("ACT", "PEND", "QUEUED")):
+    #     """Block (polling) until no active jobs remain for the serial or timeout.
+
+    #     Raises TimeoutError if the timeout (seconds) is exceeded.
+    #     Returns the final list (expected empty) of active jobs (always []).
+    #     """
+    #     start = time.time()
+    #     while True:
+    #         active = self.get_jobs_for_serial(serial, statuses=statuses)
+    #         if not active:
+    #             return active
+    #         if time.time() - start > timeout:
+    #             raise TimeoutError(
+    #                 f"Active jobs for serial {serial} did not clear within {timeout}s: "
+    #                 f"{[j.get('id') for j in active]}"
+    #             )
+    #         time.sleep(poll_interval)
 
     @staticmethod
     def _convert_reference_response_to_list(references_string):
@@ -291,30 +452,21 @@ class PanoramaAPI(_PanPaloShared):
 
         return references
 
-    def get_api_version(self):
-
-        uri = f"?type=version&key={self.headers['X-PAN-Key']}"
-
-        resp = self._get_req(self.xml_uri+uri)
-
-        responseXml = ET.fromstring(resp.content)
-        return responseXml.find('result').find('sw-version').text
-        # return {"status": responseXml.find('result').find('job').find('status').text,
-
     def get_devices(self, device_list=None):
-        if device_list:
-            device_subset = []
-            for device in device_list:
-                uri = '?type=op&cmd=<show><devices><devices><entry name="026701009351"></devices></show>'
-                # f"&xpath=/config/devices/entry[@name='{device}']")
-                resp = self._get_req(self.xml_uri+uri)
-                device_subset.append(self.xml_to_json(resp)['response']['result']['devices']['entry'])
-            return device_subset
-        else:
-            uri = '?type=op&cmd=<show><devices><all></all></devices></show>'
-            resp = self._get_req(self.xml_uri+uri)
-            return self.xml_to_json(resp)['response']['result']['devices']['entry']
-
+        
+        # if device_list:
+        #     device_subset = []
+        #     for serial in device_list:
+        #         # THIS DOES NOT WORK. PA CLI Command/API does not support filtering this result.
+        #         uri = f'?type=op&cmd=<show><devices><devices><entry name="{serial}"></devices></show>'
+        #         # f"&xpath=/config/devices/entry[@name='{device}']")
+        #         resp = self._get_req(self.xml_uri+uri)
+        #         device_subset.append(self.xml_to_json(resp)['response']['result']['devices']['entry'])
+        #     return device_subset
+        # else:
+        uri = '?type=op&cmd=<show><devices><all></all></devices></show>'
+        resp = self._get_req(self.xml_uri+uri)
+        return self.xml_to_json(resp)['response']['result']['devices']['entry']
 
     def get_sys_info(self, sn):
         uri = f'?type=op&cmd=<show><system><info></info></system></show>&target={sn}'
@@ -354,20 +506,20 @@ class PanoramaAPI(_PanPaloShared):
 
         return None
 
+    # ToDo : DJ - Remove from here once all code is switched to use VCMD app class
     def get_current_used_vsys(self, device):
         if 'vsys' in device and 'entry' in device['vsys']:
             if type(device['vsys']['entry']) is dict:
-                # no list, we have a single entry which must be vsys1; none of the 4 we can allocate are in use
+                # no list, we have a single entry which must be vsys1; none of the 4 we can allocate are in use
                 return 0
             return len(device['vsys']['entry'])-1 # list of vsys -1 to ignore vsys1
         return None
 
+    # ToDo : DJ - Remove from here once all code is switched to use VCMD app class
     def get_remaining_vsys(self, device):
         """
         returns the number (int) of vsys unused
-
         if no sn specified, method will pull all devices.
-
         Firewall must be in multi vsys mode to have return data
         """
 
@@ -375,7 +527,8 @@ class PanoramaAPI(_PanPaloShared):
             try:
                 # run this func once here and return two values, rather than run it again in the worker logic
                 # subtract 3 because we only care about the 4 vsys we decided to allocate to customers
-                max = self.get_vsys_max(device['serial']) -3
+                # ToDo - hardcoded value of 3 here. Tie to to FACTS limits?
+                max = self.get_vsys_max(device['serial']) - 3
                 used = self.get_current_used_vsys(device)
                 remaining = max - used
                 return max, remaining
@@ -394,6 +547,7 @@ class PanoramaAPI(_PanPaloShared):
         else:
             return None  # or any default value you prefer
 
+    # ToDo : DJ - Remove from here once all code is switched to use VCMD app class
     def get_all_vsys_tags(self, devices: list):
         for device in devices:
             if device['multi-vsys'] == "yes":
@@ -403,33 +557,38 @@ class PanoramaAPI(_PanPaloShared):
                     vsys_tags.append({'vsys': vsys['@name'], 'tags': tags})
                 return vsys_tags
 
+    # ToDo : DJ - Remove from here once all code is switched to use VCMD app class
     def vsys_worker(self, device, devices_vsys, lock, get_tags=False):
-        if device['multi-vsys'] == "yes":
-            vsys_max, vsys_free = self.get_remaining_vsys(device)
-            vsys_data = {'hostname': device['hostname'],
-                            'serial': device['serial'],
-                            'vsys_free': vsys_free,
-                            'vsys_max': vsys_max,
-                            "ha_peer": device['ha']['peer']['serial'] if device.get('ha', {}).get('peer', {}).get('serial') else None}
-            vsys_in_use = []
-            # if entry is a list, then there are multiple vsys
-            if type(device['vsys']['entry']) is list:
-                for vsys in device['vsys']['entry']:
-                    if vsys['@name'] != "vsys1":
-                        # Show devices doesn't have detailed vsys info (tags). Optionally retrieve tags
-                        if get_tags:
-                            tags = self.get_vsys_tags(device['serial'], vsys['@name'])
-                            vsys_in_use.append({'@name': vsys['@name'],
-                                                "display-name": vsys['display-name'], "tags": tags})
-                        else:
-                            vsys_in_use.append({'@name': vsys['@name'],
-                                                "display-name": vsys['display-name']})
-            vsys_data['vsys_in_use'] = vsys_in_use
-            vsys_data['vsys_used'] = len(vsys_in_use)
-            # use the lock synchronization primitive to safely update the list
-            with lock:
-                devices_vsys.append(vsys_data)
+        if device['multi-vsys'] != "yes":
+            return
+        vsys_max, vsys_free = self.get_remaining_vsys(device)
+        vsys_data = {
+            'hostname': device['hostname'],
+            'serial': device['serial'],
+            'vsys_free': vsys_free,
+            'vsys_max': vsys_max,
+            "ha_peer": device['ha']['peer']['serial'] if device.get('ha', {}).get('peer', {}).get('serial') else None
+        }
+        vsys_in_use = []
+        # if entry is a list, then there are multiple vsys
+        if type(device['vsys']['entry']) is list:
+            for vsys in device['vsys']['entry']:
+                if vsys['@name'] != "vsys1":
+                    # Show devices doesn't have detailed vsys info (tags). Optionally retrieve tags
+                    if get_tags:
+                        tags = self.get_vsys_tags(device['serial'], vsys['@name'])
+                        vsys_in_use.append({'@name': vsys['@name'],
+                                            "display-name": vsys['display-name'], "tags": tags})
+                    else:
+                        vsys_in_use.append({'@name': vsys['@name'],
+                                            "display-name": vsys['display-name']})
+        vsys_data['vsys_in_use'] = vsys_in_use
+        vsys_data['vsys_used'] = len(vsys_in_use)
+        # use the lock synchronization primitive to safely update the list
+        with lock:
+            devices_vsys.append(vsys_data)
 
+    # ToDo : DJ - Remove from here once all code is switched to use VCMD app class
     def get_vsys_fields(self, devices: str) -> list:
         """ maps out vsys fields for each device"""
         devices_vsys = []
@@ -453,6 +612,7 @@ class PanoramaAPI(_PanPaloShared):
                 return True
         return False
 
+    # ToDo : DJ - Remove from here once all code is switched to use VCMD app class 
     def get_vsys_data(self, combine_ha=True, devices=None):
         """
         returns number of used and available vsys. Includes tags
@@ -462,74 +622,76 @@ class PanoramaAPI(_PanPaloShared):
         Firewall must be in multi vsys mode to have return data
         """
         devices_vsys = []
-        if devices is None:
+        if not devices:
             devices = self.get_devices()
         devices_vsys = self.get_vsys_fields(devices)
-        if combine_ha:
-            device_vsys_combined_ha = []
-            device_peers_added_to_device_vsys_combined_ha = []
-            for device in devices_vsys:
-                if not device['ha_peer']:
-                    del device['ha_peer']
+
+        if not combine_ha:
+            return devices_vsys
+
+        device_vsys_combined_ha = []
+        device_peers_added_to_device_vsys_combined_ha = []
+        for device in devices_vsys:
+            if not device['ha_peer']:
+                del device['ha_peer']
+                device_vsys_combined_ha.append(device)
+                continue
+            if device['serial'] not in device_peers_added_to_device_vsys_combined_ha:
+                # storing peer data in memory in next lines to use later
+                ha_peer_data = None
+                for d in devices_vsys:
+                    if d['serial'] == device['ha_peer']:
+                        ha_peer_data = d
+                        break
+                if ha_peer_data is None:  # we didn't find an ha_peer - add the standalone to the list and carry on
                     device_vsys_combined_ha.append(device)
                     continue
-                if device['serial'] not in device_peers_added_to_device_vsys_combined_ha:
-                    # storing peer data in memory in next lines to use later
-                    ha_peer_data = None
-                    for d in devices_vsys:
-                        if d['serial'] == device['ha_peer']:
-                            ha_peer_data = d
-                            break
-                    if ha_peer_data == None: # we didn't find an ha_peer - add the standalone to the list and carry on
-                       device_vsys_combined_ha.append(device)
-                       continue
-                    # Combining serials with higher serial first ex: 1000_200
-                    higher_serial = max(device['serial'], device['ha_peer'])
-                    lower_serial = min(device['serial'], device['ha_peer'])
-                    combined_serial = f"{higher_serial}, {lower_serial}"
+                # Combining serials with higher serial first ex: 1000_200
+                higher_serial = max(device['serial'], device['ha_peer'])
+                lower_serial = min(device['serial'], device['ha_peer'])
+                combined_serial = f"{higher_serial}, {lower_serial}"
 
-                    # serial hostname is first by the following logic
-                    higher_hostname = None
-                    lower_hostname = None
+                # serial hostname is first by the following logic
+                higher_hostname = None
+                lower_hostname = None
 
-                    if device['serial'] == higher_serial:
-                        higher_hostname = device['hostname']
-                        lower_hostname = ha_peer_data['hostname']
-                    else:
-                        higher_hostname = ha_peer_data['hostname']
-                        lower_hostname = device['hostname']
-                    if not higher_hostname or not lower_hostname:
-                        raise Exception("Unable to determine hostname for HA Peers")
-                    combined_hostname = f"{higher_hostname}, {lower_hostname}"
-                    ha_combined_vsys_data = {"serial": combined_serial,
-                                             "hostname": combined_hostname,
-                                             "lower_serial": lower_serial,
-                                             "higher_serial": higher_serial,
-                                             }
-                    if (
-                        device['vsys_max'] == ha_peer_data['vsys_max'] and
-                        device['vsys_used'] == ha_peer_data['vsys_used'] and
-                        device['vsys_free'] == ha_peer_data['vsys_free'] and
-                        device['vsys_in_use'] == ha_peer_data['vsys_in_use']
-                    ):
-                        ha_combined_vsys_data['vsys_max'] = device['vsys_max']
-                        ha_combined_vsys_data['vsys_used'] = device['vsys_used']
-                        ha_combined_vsys_data['vsys_free'] = device['vsys_free']
-                        ha_combined_vsys_data['vsys_in_use'] = device['vsys_in_use']
-                        ha_combined_vsys_data['Synced'] = True
-                    else:
-                        # HA Peers are not synced
-                        ha_combined_vsys_data['vsys_max'] = None
-                        ha_combined_vsys_data['vsys_used'] = None
-                        ha_combined_vsys_data['vsys_free'] = None
-                        ha_combined_vsys_data['vsys_in_use'] = None
-                        ha_combined_vsys_data['Synced'] = False
+                if device['serial'] == higher_serial:
+                    higher_hostname = device['hostname']
+                    lower_hostname = ha_peer_data['hostname']
+                else:
+                    higher_hostname = ha_peer_data['hostname']
+                    lower_hostname = device['hostname']
+                if not higher_hostname or not lower_hostname:
+                    raise Exception("Unable to determine hostname for HA Peers")
+                combined_hostname = f"{higher_hostname}, {lower_hostname}"
+                ha_combined_vsys_data = {"serial": combined_serial,
+                                         "hostname": combined_hostname,
+                                         "lower_serial": lower_serial,
+                                         "higher_serial": higher_serial,
+                                         }
+                if (
+                    device['vsys_max'] == ha_peer_data['vsys_max'] and
+                    device['vsys_used'] == ha_peer_data['vsys_used'] and
+                    device['vsys_free'] == ha_peer_data['vsys_free'] and
+                    device['vsys_in_use'] == ha_peer_data['vsys_in_use']
+                ):
+                    ha_combined_vsys_data['vsys_max'] = device['vsys_max']
+                    ha_combined_vsys_data['vsys_used'] = device['vsys_used']
+                    ha_combined_vsys_data['vsys_free'] = device['vsys_free']
+                    ha_combined_vsys_data['vsys_in_use'] = device['vsys_in_use']
+                    ha_combined_vsys_data['Synced'] = True
+                else:
+                    # HA Peers are not synced
+                    ha_combined_vsys_data['vsys_max'] = None
+                    ha_combined_vsys_data['vsys_used'] = None
+                    ha_combined_vsys_data['vsys_free'] = None
+                    ha_combined_vsys_data['vsys_in_use'] = None
+                    ha_combined_vsys_data['Synced'] = False
 
-                    device_peers_added_to_device_vsys_combined_ha.append(ha_peer_data['serial'])
-                    device_vsys_combined_ha.append(ha_combined_vsys_data)
+                device_peers_added_to_device_vsys_combined_ha.append(ha_peer_data['serial'])
+                device_vsys_combined_ha.append(ha_combined_vsys_data)
 
-            return device_vsys_combined_ha
-        return devices_vsys
+        return device_vsys_combined_ha
 
     def get_devicegroups(self, device_group=None, include_shared=False):
         if device_group:
@@ -1380,15 +1542,22 @@ class PanoramaAPI(_PanPaloShared):
                 # At this point, device is found. We should break out of loop.
                 break
 
+        # ToDO: fix this uniformly for API and GUI.
+        #   Ideally with FACTS provided limits + latest from device (like it is done in API)
+        #   Also, assert should not be used for general error handling or controlling the flow of program logic,
+        #   as they can be disabled
+        #   So use:
+        # if len(vsys_ids_used) >= 5:
+        #     raise RuntimeError("VSYS capacity reached. Cannot add VSYS on this device")
         assert(len(vsys_ids_used) < 5)
 
         return PanoramaAPI.find_lowest_available_number(vsys_ids_used)
 
+    # @checks
     def create_vsys(self, vsys_name: str,
                     vsys_id: str,
-                    serial: int,
-                    tag_name: str = None,
-                    make_changes_on_active_ha_peer: bool = False):
+                    serial: str,
+                    tag_name: str = None):
 
         """
         set vsys_id to 'auto' to automatically find the next available vsys id
@@ -1397,37 +1566,16 @@ class PanoramaAPI(_PanPaloShared):
         else will create vsys on active peer
 
         """
-
-        # serial = serial.split('_')[0]
         self.logger.info(f"Creating vsys {vsys_name} with id {vsys_id} on device {serial}")
+
         if str(vsys_id).lower() == 'auto':
             # find next available vsys id automatically
             vsys_id = self.auto_vsysid(serial)
-        # FIXME: FINISH BELOW FOR CONFIGURING PEER
-        # if make_changes_on_active_ha_peer:
-
-        #     devices = self.get_devices()
-        #     found_active_peer = False
-        #     peer_index = -1
-
-        #     while not found_active_peer and peer_index < 2:
-        #         peer_index += 1
-
-        #         for device in devices:
-
-        #             if device['@name'] == sn.split('_')[peer_index]:
-        #                 if 'ha' in device:
-        #                     if device['ha']['state'] == 'active':
-        #                         found_active_peer = True
-        #                         serial = device['@name']
-
-        # TODO: WRITE LOGIC TO FIND OUT IF DEVICE IS ACTIVE OR PASSIVE
 
         """ Payload could also containt colors and comments:
                                     <tag>
                                         <color>color15</color>
                                         <comments>"other date created"</comments>
-
                                     </tag>
         """
         if tag_name:
@@ -1446,17 +1594,17 @@ class PanoramaAPI(_PanPaloShared):
             payload = f"""
                         <entry name="vsys{vsys_id}">
                             <display-name>{vsys_name}</display-name>
-
                         </entry>
                         """
         # FIXME: add date created
 
         uri = (f'?type=config&target={serial}&action=set'
                f'&xpath=/config/devices/entry/vsys&element={payload}')
+        
         try:
             resp = self._get_req(self.xml_uri+uri)
             resp.raise_for_status()
-
+            # TODO - if no more vsys can be added we need to return an appropriate message
         except requests.exceptions.HTTPError as e:
             self.logger.error(f"HTTPError creating vsys: {e}")
             raise Exception(f"HTTPError creating vsys: {e}")
@@ -2337,3 +2485,12 @@ class PanOSAPI(_PanPaloShared):
         #     print("No addresses found!")
 
         return del_response_objects
+
+
+# if __name__ == "__main__":
+#     pamAPI = PanoramaAPI(panorama_mgmt_ip=os.getenv("PANO_IP"))
+#     pamAPI.Username = os.getenv("NISA_USER")
+#     pamAPI.Password = os.getenv("NISA_PASS")
+#     pamAPI.headers
+#     pamAPI.login()
+#     x = pamAPI.create_vsys("ALEX_TEST", "", "026701009284")
